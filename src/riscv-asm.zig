@@ -225,8 +225,8 @@ pub const Instr = union(enum) {
                         0b000 => .{ .FENCE = .{ .rd = GRf(i.f.rd), .rs1 = GRf(i.f.rs1), .succ = i.f.succ, .pred = i.f.pred, .fm = i.f.fm } },
                         else => .{ .UNKNOWN_X32 = x32 },
                     },
-                    0b1110011 => switch (i.s.funct3) {
-                        0b000 => switch (i.s.imm_11_5) {
+                    0b1110011 => switch (i.i.funct3) {
+                        0b000 => switch (i.i.imm_11_0) {
                             0 => .ECALL,
                             1 => .EBREAK,
                             else => .{ .UNKNOWN_X32 = x32 },
@@ -372,121 +372,121 @@ pub const Instr = union(enum) {
 
     // a RV32I
 
-    pub fn lui(rd: base.GeneralReg, imm: u20) Self {
+    pub fn lui(rd: GR, imm: u20) Self {
         return Self{ .LUI = .{ .rd = rd, .imm = imm } };
     }
-    pub fn auipc(rd: base.GeneralReg, imm: u20) Self {
+    pub fn auipc(rd: GR, imm: u20) Self {
         return Self{ .AUIPC = .{ .rd = rd, .imm = imm } };
     }
-    pub fn jal(rd: base.GeneralReg, imm: i20) Self {
+    pub fn jal(rd: GR, imm: i20) Self {
         return Self{ .JAL = .{ .rd = rd, .imm = imm } };
     }
-    pub fn jalr(rd: base.GeneralReg, rs1: base.GeneralReg, imm: i12) Self {
+    pub fn jalr(rd: GR, rs1: GR, imm: i12) Self {
         return Self{ .JALR = .{ .rd = rd, .rs1 = rs1, .imm = imm } };
     }
-    pub fn beq(rs1: base.GeneralReg, rs2: base.GeneralReg, offset: i12) Self {
+    pub fn beq(rs1: GR, rs2: GR, offset: i12) Self {
         return Self{ .BEQ = .{ .rs1 = rs1, .rs2 = rs2, .offset = offset } };
     }
-    pub fn bne(rs1: base.GeneralReg, rs2: base.GeneralReg, offset: i12) Self {
+    pub fn bne(rs1: GR, rs2: GR, offset: i12) Self {
         return Self{ .BNE = .{ .rs1 = rs1, .rs2 = rs2, .offset = offset } };
     }
-    pub fn blt(rs1: base.GeneralReg, rs2: base.GeneralReg, offset: i12) Self {
+    pub fn blt(rs1: GR, rs2: GR, offset: i12) Self {
         return Self{ .BLT = .{ .rs1 = rs1, .rs2 = rs2, .offset = offset } };
     }
-    pub fn bge(rs1: base.GeneralReg, rs2: base.GeneralReg, offset: i12) Self {
+    pub fn bge(rs1: GR, rs2: GR, offset: i12) Self {
         return Self{ .BGE = .{ .rs1 = rs1, .rs2 = rs2, .offset = offset } };
     }
-    pub fn bltu(rs1: base.GeneralReg, rs2: base.GeneralReg, offset: i12) Self {
+    pub fn bltu(rs1: GR, rs2: GR, offset: i12) Self {
         return Self{ .BLTU = .{ .rs1 = rs1, .rs2 = rs2, .offset = offset } };
     }
-    pub fn bgeu(rs1: base.GeneralReg, rs2: base.GeneralReg, offset: i12) Self {
+    pub fn bgeu(rs1: GR, rs2: GR, offset: i12) Self {
         return Self{ .BGEU = .{ .rs1 = rs1, .rs2 = rs2, .offset = offset } };
     }
 
-    pub fn lb(rd: base.GeneralReg, rs1: base.GeneralReg, offset: i12) Self {
+    pub fn lb(rd: GR, rs1: GR, offset: i12) Self {
         return Self{ .LB = .{ .rd = rd, .rs1 = rs1, .offset = offset } };
     }
-    pub fn lh(rd: base.GeneralReg, rs1: base.GeneralReg, offset: i12) Self {
+    pub fn lh(rd: GR, rs1: GR, offset: i12) Self {
         return Self{ .LH = .{ .rd = rd, .rs1 = rs1, .offset = offset } };
     }
-    pub fn lw(rd: base.GeneralReg, rs1: base.GeneralReg, offset: i12) Self {
+    pub fn lw(rd: GR, rs1: GR, offset: i12) Self {
         return Self{ .LW = .{ .rd = rd, .rs1 = rs1, .offset = offset } };
     }
-    pub fn lbu(rd: base.GeneralReg, rs1: base.GeneralReg, offset: i12) Self {
+    pub fn lbu(rd: GR, rs1: GR, offset: i12) Self {
         return Self{ .LBU = .{ .rd = rd, .rs1 = rs1, .offset = offset } };
     }
-    pub fn lhu(rd: base.GeneralReg, rs1: base.GeneralReg, offset: i12) Self {
+    pub fn lhu(rd: GR, rs1: GR, offset: i12) Self {
         return Self{ .LHU = .{ .rd = rd, .rs1 = rs1, .offset = offset } };
     }
 
-    pub fn sb(rs1: base.GeneralReg, rs2: base.GeneralReg, offset: i12) Self {
+    pub fn sb(rs1: GR, rs2: GR, offset: i12) Self {
         return Self{ .SB = .{ .rs1 = rs1, .rs2 = rs2, .offset = offset } };
     }
-    pub fn sh(rs1: base.GeneralReg, rs2: base.GeneralReg, offset: i12) Self {
+    pub fn sh(rs1: GR, rs2: GR, offset: i12) Self {
         return Self{ .SH = .{ .rs1 = rs1, .rs2 = rs2, .offset = offset } };
     }
-    pub fn sw(rs1: base.GeneralReg, rs2: base.GeneralReg, offset: i12) Self {
+    pub fn sw(rs1: GR, rs2: GR, offset: i12) Self {
         return Self{ .SW = .{ .rs1 = rs1, .rs2 = rs2, .offset = offset } };
     }
 
-    pub fn addi(rd: base.GeneralReg, rs1: base.GeneralReg, imm: i12) Self {
+    pub fn addi(rd: GR, rs1: GR, imm: i12) Self {
         return Self{ .ADDI = .{ .rd = rd, .rs1 = rs1, .imm = imm } };
     }
-    pub fn slti(rd: base.GeneralReg, rs1: base.GeneralReg, imm: i12) Self {
+    pub fn slti(rd: GR, rs1: GR, imm: i12) Self {
         return Self{ .SLTI = .{ .rd = rd, .rs1 = rs1, .imm = imm } };
     }
-    pub fn sltiu(rd: base.GeneralReg, rs1: base.GeneralReg, imm: i12) Self {
+    pub fn sltiu(rd: GR, rs1: GR, imm: i12) Self {
         return Self{ .SLTIU = .{ .rd = rd, .rs1 = rs1, .imm = imm } };
     }
-    pub fn xori(rd: base.GeneralReg, rs1: base.GeneralReg, imm: i12) Self {
+    pub fn xori(rd: GR, rs1: GR, imm: i12) Self {
         return Self{ .XORI = .{ .rd = rd, .rs1 = rs1, .imm = imm } };
     }
-    pub fn ori(rd: base.GeneralReg, rs1: base.GeneralReg, imm: i12) Self {
+    pub fn ori(rd: GR, rs1: GR, imm: i12) Self {
         return Self{ .ORI = .{ .rd = rd, .rs1 = rs1, .imm = imm } };
     }
-    pub fn andi(rd: base.GeneralReg, rs1: base.GeneralReg, imm: i12) Self {
+    pub fn andi(rd: GR, rs1: GR, imm: i12) Self {
         return Self{ .ANDI = .{ .rd = rd, .rs1 = rs1, .imm = imm } };
     }
-    pub fn slli(rd: base.GeneralReg, rs1: base.GeneralReg, shamt: u6) Self {
+    pub fn slli(rd: GR, rs1: GR, shamt: u6) Self {
         return Self{ .SLLI = .{ .rd = rd, .rs1 = rs1, .shamt = shamt } };
     }
-    pub fn srli(rd: base.GeneralReg, rs1: base.GeneralReg, shamt: u6) Self {
+    pub fn srli(rd: GR, rs1: GR, shamt: u6) Self {
         return Self{ .SRLI = .{ .rd = rd, .rs1 = rs1, .shamt = shamt } };
     }
-    pub fn srai(rd: base.GeneralReg, rs1: base.GeneralReg, shamt: u6) Self {
+    pub fn srai(rd: GR, rs1: GR, shamt: u6) Self {
         return Self{ .SRAI = .{ .rd = rd, .rs1 = rs1, .shamt = shamt } };
     }
-    pub fn add(rd: base.GeneralReg, rs1: base.GeneralReg, rs2: base.GeneralReg) Self {
+    pub fn add(rd: GR, rs1: GR, rs2: GR) Self {
         return Self{ .ADD = .{ .rd = rd, .rs1 = rs1, .rs2 = rs2 } };
     }
-    pub fn sub(rd: base.GeneralReg, rs1: base.GeneralReg, rs2: base.GeneralReg) Self {
+    pub fn sub(rd: GR, rs1: GR, rs2: GR) Self {
         return Self{ .SUB = .{ .rd = rd, .rs1 = rs1, .rs2 = rs2 } };
     }
-    pub fn sll(rd: base.GeneralReg, rs1: base.GeneralReg, rs2: base.GeneralReg) Self {
+    pub fn sll(rd: GR, rs1: GR, rs2: GR) Self {
         return Self{ .SLL = .{ .rd = rd, .rs1 = rs1, .rs2 = rs2 } };
     }
-    pub fn slt(rd: base.GeneralReg, rs1: base.GeneralReg, rs2: base.GeneralReg) Self {
+    pub fn slt(rd: GR, rs1: GR, rs2: GR) Self {
         return Self{ .SLT = .{ .rd = rd, .rs1 = rs1, .rs2 = rs2 } };
     }
-    pub fn sltu(rd: base.GeneralReg, rs1: base.GeneralReg, rs2: base.GeneralReg) Self {
+    pub fn sltu(rd: GR, rs1: GR, rs2: GR) Self {
         return Self{ .SLTU = .{ .rd = rd, .rs1 = rs1, .rs2 = rs2 } };
     }
-    pub fn xor(rd: base.GeneralReg, rs1: base.GeneralReg, rs2: base.GeneralReg) Self {
+    pub fn xor(rd: GR, rs1: GR, rs2: GR) Self {
         return Self{ .XOR = .{ .rd = rd, .rs1 = rs1, .rs2 = rs2 } };
     }
-    pub fn srl(rd: base.GeneralReg, rs1: base.GeneralReg, rs2: base.GeneralReg) Self {
+    pub fn srl(rd: GR, rs1: GR, rs2: GR) Self {
         return Self{ .SRL = .{ .rd = rd, .rs1 = rs1, .rs2 = rs2 } };
     }
-    pub fn sra(rd: base.GeneralReg, rs1: base.GeneralReg, rs2: base.GeneralReg) Self {
+    pub fn sra(rd: GR, rs1: GR, rs2: GR) Self {
         return Self{ .SRA = .{ .rd = rd, .rs1 = rs1, .rs2 = rs2 } };
     }
-    pub fn _or(rd: base.GeneralReg, rs1: base.GeneralReg, rs2: base.GeneralReg) Self {
+    pub fn _or(rd: GR, rs1: GR, rs2: GR) Self {
         return Self{ .ORI = .{ .rd = rd, .rs1 = rs1, .rs2 = rs2 } };
     }
-    pub fn _and(rd: base.GeneralReg, rs1: base.GeneralReg, rs2: base.GeneralReg) Self {
+    pub fn _and(rd: GR, rs1: GR, rs2: GR) Self {
         return Self{ .AND = .{ .rd = rd, .rs1 = rs1, .rs2 = rs2 } };
     }
-    pub fn fence(rd: base.GeneralReg, rs1: base.GeneralReg, succ: base.FFlags, pred: base.FFlags, fm: u4) Self {
+    pub fn fence(rd: GR, rs1: GR, succ: base.FFlags, pred: base.FFlags, fm: u4) Self {
         return Self{ .FENCE = .{ .rd = rd, .rs1 = rs1, .succ = succ, .pred = pred, .fm = fm } };
     }
     pub fn ecall() Self {
@@ -498,15 +498,36 @@ pub const Instr = union(enum) {
 
     // a RV64I
 
-    pub fn lwu(rd: base.GeneralReg, rs1: base.GeneralReg, offset: i12) Self {
+    pub fn lwu(rd: GR, rs1: GR, offset: i12) Self {
         return Self{ .LWU = .{ .rd = rd, .rs1 = rs1, .offset = offset } };
     }
 
-    pub fn ld(rd: base.GeneralReg, rs1: base.GeneralReg, offset: i12) Self {
+    pub fn ld(rd: GR, rs1: GR, offset: i12) Self {
         return Self{ .LD = .{ .rd = rd, .rs1 = rs1, .offset = offset } };
     }
 
-    pub fn sd(rs1: base.GeneralReg, rs2: base.GeneralReg, offset: i12) Self {
+    pub fn sd(rs1: GR, rs2: GR, offset: i12) Self {
         return Self{ .SD = .{ .rs1 = rs1, .rs2 = rs2, .offset = offset } };
+    }
+
+    // a Ziscr
+
+    pub fn csrrw(rd: GR, rs1: GR, csr: u12) Self {
+        return Self{ .CSRRW = .{ .rd = rd, .rs1 = rs1, .csr = csr } };
+    }
+    pub fn csrrs(rd: GR, rs1: GR, csr: u12) Self {
+        return Self{ .CSRRS = .{ .rd = rd, .rs1 = rs1, .csr = csr } };
+    }
+    pub fn csrrc(rd: GR, rs1: GR, csr: u12) Self {
+        return Self{ .CSRRC = .{ .rd = rd, .rs1 = rs1, .csr = csr } };
+    }
+    pub fn csrrwi(rd: GR, uimm: u5, csr: u12) Self {
+        return Self{ .CSRRWI = .{ .rd = rd, .uimm = uimm, .csr = csr } };
+    }
+    pub fn csrrsi(rd: GR, uimm: u5, csr: u12) Self {
+        return Self{ .CSRRSI = .{ .rd = rd, .uimm = uimm, .csr = csr } };
+    }
+    pub fn csrrci(rd: GR, uimm: u5, csr: u12) Self {
+        return Self{ .CSRRCI = .{ .rd = rd, .uimm = uimm, .csr = csr } };
     }
 };

@@ -336,7 +336,7 @@ pub const CPU = struct {
                                         print("ECALL not implemented!\n", .{});
                                     },
                                     1 => { // EBREAK
-                                        print("EBREAK not implemented!\n", .{});
+                                        return error.Break;
                                     },
                                     else => {
                                         print("Invalid SYSTEM call {b:0>12}\n", .{instr.i.imm_11_0});
