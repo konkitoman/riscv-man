@@ -47,6 +47,313 @@ pub const GeneralReg = enum(u5) {
         return GeneralRegsNames[self.to_u5()];
     }
 };
+
+pub const CSRAddr = enum(u12) {
+    // RISC-V unprivileged
+
+    fflags = 0x001,
+    frm = 0x002,
+    fcsr = 0x003,
+    cycle = 0xC00,
+    time = 0xC01,
+    instret = 0xC02,
+    hpmcounter3 = 0xC03,
+    hpmcounter4 = 0xC04,
+    hpmcounter5 = 0xC05,
+    hpmcounter6 = 0xC06,
+    hpmcounter7 = 0xC07,
+    hpmcounter8 = 0xC08,
+    hpmcounter9 = 0xC09,
+    hpmcounter10 = 0xC0A,
+    hpmcounter11 = 0xC0B,
+    hpmcounter12 = 0xC0C,
+    hpmcounter13 = 0xC0D,
+    hpmcounter14 = 0xC0E,
+    hpmcounter15 = 0xC0F,
+    hpmcounter16 = 0xC10,
+    hpmcounter17 = 0xC11,
+    hpmcounter18 = 0xC12,
+    hpmcounter19 = 0xC13,
+    hpmcounter20 = 0xC14,
+    hpmcounter21 = 0xC15,
+    hpmcounter22 = 0xC16,
+    hpmcounter23 = 0xC17,
+    hpmcounter24 = 0xC18,
+    hpmcounter25 = 0xC19,
+    hpmcounter26 = 0xC1A,
+    hpmcounter27 = 0xC1B,
+    hpmcounter28 = 0xC1C,
+    hpmcounter29 = 0xC1D,
+    hpmcounter30 = 0xC1E,
+    hpmcounter31 = 0xC1F,
+
+    // RV32 only
+    cycleh = 0xC00,
+    timeh = 0xC01,
+    instreth = 0xC02,
+    hpmcounter3h = 0xC83,
+    hpmcounter4h = 0xC84,
+    hpmcounter5h = 0xC85,
+    hpmcounter6h = 0xC86,
+    hpmcounter7h = 0xC87,
+    hpmcounter8h = 0xC88,
+    hpmcounter9h = 0xC89,
+    hpmcounter10h = 0xC8A,
+    hpmcounter11h = 0xC8B,
+    hpmcounter12h = 0xC8C,
+    hpmcounter13h = 0xC8D,
+    hpmcounter14h = 0xC8E,
+    hpmcounter15h = 0xC8F,
+    hpmcounter16h = 0xC10,
+    hpmcounter17h = 0xC11,
+    hpmcounter18h = 0xC12,
+    hpmcounter19h = 0xC13,
+    hpmcounter20h = 0xC14,
+    hpmcounter21h = 0xC15,
+    hpmcounter22h = 0xC16,
+    hpmcounter23h = 0xC17,
+    hpmcounter24h = 0xC18,
+    hpmcounter25h = 0xC19,
+    hpmcounter26h = 0xC1A,
+    hpmcounter27h = 0xC1B,
+    hpmcounter28h = 0xC1C,
+    hpmcounter29h = 0xC1D,
+    hpmcounter30h = 0xC1E,
+    hpmcounter31h = 0xC1F,
+
+    // RISC-V supervisor-level
+
+    sstatus = 0x100,
+    sie = 0x104,
+    stvec = 0x105,
+    scountern = 0x106,
+
+    senvcfg = 0x10A,
+
+    scountinhibit = 0x120,
+
+    sscratch = 0x140,
+    sepc = 0x141,
+    scause = 0x142,
+    stval = 0x143,
+    sip = 0x144,
+    scountovf = 0xDA0,
+
+    stap = 0x180,
+
+    scontext = 0x5A8,
+
+    sstatenn0 = 0x10C,
+    sstatenn1 = 0x10D,
+    sstatenn2 = 0x10E,
+    sstatenn3 = 0x10F,
+
+    // RISC-V hypervisor
+
+    hstatus = 0x600,
+    hedeleg = 0x602,
+    hideleg = 0x603,
+    hie = 0x604,
+    hcounteren = 0x606,
+    hgeie = 0x607,
+
+    htval = 0x642,
+    hip = 0x644,
+    hvip = 0x645,
+    htinst = 0x64A,
+    hgeip = 0xE12,
+
+    henvcfg = 0x60A,
+
+    // RV32 only
+    henvcfgh = 0x61A,
+
+    hgatp = 0x680,
+
+    hcontext = 0x6A8,
+
+    htimedelta = 0x605,
+
+    // RV32 only
+    htimedeltah = 0x615,
+
+    hstateen0 = 0x60C,
+    hstateen1 = 0x60D,
+    hstateen2 = 0x60E,
+    hstateen3 = 0x60F,
+
+    // RV32 only
+    hstateen0h = 0x61C,
+    hstateen1h = 0x61D,
+    hstateen2h = 0x61E,
+    hstateen3h = 0x61F,
+
+    vsstatus = 0x200,
+    vsie = 0x204,
+    vstvec = 0x205,
+    vsscratch = 0x240,
+    vsepc = 0x241,
+    vscause = 0x242,
+    vstval = 0x243,
+    vsip = 0x244,
+    vsatp = 0x280,
+
+    // RISC-V machine-level
+
+    mvendorid = 0xF11,
+    marchid = 0xF12,
+    mimpid = 0xF13,
+    mhartid = 0xF14,
+    mconfigptr = 0xF15,
+
+    mstatus = 0x300,
+    misa = 0x301,
+    medeleg = 0x302,
+    mideleg = 0x303,
+    mie = 0x304,
+    mtvec = 0x305,
+    mcounteren = 0x306,
+
+    // RV32 only
+    mstatush = 0x310,
+    medelegh = 0x312,
+
+    mscratch = 0x340,
+    mepc = 0x341,
+    mcause = 0x342,
+    mtval = 0x343,
+    mip = 0x344,
+    mtinst = 0x34A,
+    mtval2 = 0x34B,
+
+    menvcfg = 0x30A,
+    mseccfg = 0x747,
+
+    // RV32 only
+    menvcfgh = 0x31A,
+    mseccfgh = 0x757,
+
+    pmpcfg0 = 0x3A0,
+    pmpcfg2 = 0x3A2,
+    pmpcfg4 = 0x3A4,
+    pmpcfg6 = 0x3A6,
+    pmpcfg8 = 0x3A8,
+    pmpcfg10 = 0x3AA,
+    pmpcfg12 = 0x3AC,
+    pmpcfg14 = 0x3AE,
+
+    // RV32 only
+    pmpcfg1 = 0x3A1,
+    pmpcfg3 = 0x3A3,
+    pmpcfg5 = 0x3A5,
+    pmpcfg7 = 0x3A7,
+    pmpcfg9 = 0x3A9,
+    pmpcfg11 = 0x3AB,
+    pmpcfg13 = 0x3AD,
+    pmpcfg15 = 0x3AF,
+
+    pmpaddr0 = 0x380,
+    pmpaddr63 = 0x3EF,
+
+    mstateen0 = 0x30C,
+    mstateen1 = 0x30D,
+    mstateen2 = 0x30E,
+    mstateen3 = 0x30A,
+    mstateen0h = 0x31C,
+    mstateen1h = 0x31D,
+    mstateen2h = 0x31E,
+    mstateen3h = 0x31A,
+
+    mnscratch = 0x740,
+    mnepc = 0x741,
+    mncause = 0x742,
+    mnstatus = 0x744,
+
+    mcycle = 0xB00,
+    minstret = 0xB02,
+    mhpmcounter3 = 0xB03,
+    mhpmcounter4 = 0xB04,
+    mhpmcounter5 = 0xB05,
+    mhpmcounter6 = 0xB06,
+    mhpmcounter7 = 0xB07,
+    mhpmcounter8 = 0xB08,
+    mhpmcounter9 = 0xB09,
+    mhpmcounter10 = 0xB0A,
+    mhpmcounter11 = 0xB0B,
+    mhpmcounter12 = 0xB0C,
+    mhpmcounter13 = 0xB0D,
+    mhpmcounter14 = 0xB0E,
+    mhpmcounter15 = 0xB0F,
+    mhpmcounter16 = 0xB10,
+    mhpmcounter17 = 0xB11,
+    mhpmcounter18 = 0xB12,
+    mhpmcounter19 = 0xB13,
+    mhpmcounter20 = 0xB14,
+    mhpmcounter21 = 0xB15,
+    mhpmcounter22 = 0xB16,
+    mhpmcounter23 = 0xB17,
+    mhpmcounter24 = 0xB18,
+    mhpmcounter25 = 0xB19,
+    mhpmcounter26 = 0xB1A,
+    mhpmcounter27 = 0xB1B,
+    mhpmcounter28 = 0xB1C,
+    mhpmcounter29 = 0xB1D,
+    mhpmcounter30 = 0xB1E,
+    mhpmcounter31 = 0xB1F,
+
+    // RV32 only
+    mcycleh = 0xB80,
+    minstrecth = 0xB82,
+    mhpmcounter3h = 0xB83,
+    mhpmcounter4h = 0xB84,
+    mhpmcounter5h = 0xB85,
+    mhpmcounter6h = 0xB86,
+    mhpmcounter7h = 0xB87,
+    mhpmcounter8h = 0xB88,
+    mhpmcounter9h = 0xB89,
+    mhpmcounter10h = 0xB8A,
+    mhpmcounter11h = 0xB8B,
+    mhpmcounter12h = 0xB8C,
+    mhpmcounter13h = 0xB8D,
+    mhpmcounter14h = 0xB8E,
+    mhpmcounter15h = 0xB8F,
+    mhpmcounter16h = 0xB90,
+    mhpmcounter17h = 0xB91,
+    mhpmcounter18h = 0xB92,
+    mhpmcounter19h = 0xB93,
+    mhpmcounter20h = 0xB94,
+    mhpmcounter21h = 0xB95,
+    mhpmcounter22h = 0xB96,
+    mhpmcounter23h = 0xB97,
+    mhpmcounter24h = 0xB98,
+    mhpmcounter25h = 0xB99,
+    mhpmcounter26h = 0xB9A,
+    mhpmcounter27h = 0xB9B,
+    mhpmcounter28h = 0xB9C,
+    mhpmcounter29h = 0xB9D,
+    mhpmcounter30h = 0xB9E,
+    mhpmcounter31h = 0xB9F,
+
+    mcountinhibit = 0x320,
+    mhpmevent3 = 0x323,
+    mhpmevent31 = 0x33F,
+
+    // RV32 only
+    mhpmevent3h = 0x723,
+    mhpmevent31h = 0x73F,
+
+    tselect = 0x7A0,
+    tdata1 = 0x7A1,
+    tdata2 = 0x7A2,
+    tdata3 = 0x7A3,
+    mcontext = 0x7A8,
+
+    dscr = 0x7B0,
+    dpc = 0x7B1,
+    dscratch0 = 0x7B2,
+    dscratch1 = 0x7B3,
+};
+
 pub const VarInstr = union(enum) {
     x16: u16,
     x32: u32,
