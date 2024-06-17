@@ -252,7 +252,7 @@ pub fn main() !void {
             print("\tPC   = {x}\n", .{thread.pc});
             print("\tCSRs:\n", .{});
 
-            dump_hex("\t\t", std.mem.sliceAsBytes(thread.csrs[0..8]));
+            dump_csrs(thread.*, &[_]riscv.CSRAddr{ .fflags, .frm, .fcsr, .cycle, .time, .instret, .mvendorid, .marchid, .mimpid, .mhartid, .mconfigptr, .mstatus, .misa, .medeleg, .mideleg, .mie, .mtvec, .mcounteren, .mscratch, .mepc, .mcause, .mtval, .mip, .mtinst, .mtval2, .menvcfg, .mseccfg, .pmpcfg0, .pmpaddr0, .pmpaddr1, .mstateen0, .mstateen1, .mstateen2, .mstateen3 });
         }
 
         {
@@ -261,6 +261,13 @@ pub fn main() !void {
         }
     } else |e| {
         print("Finish with: {?}\n", .{e});
+    }
+}
+
+pub fn dump_csrs(thread: riscv.CPU.Thread, csrs: []const riscv.CSRAddr) void {
+    for (csrs) |csr| {
+        print("{s} = ", .{@tagName(csr)});
+        print("{x}\n", .{thread.csrs[csr.to_u12()]});
     }
 }
 

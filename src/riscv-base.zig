@@ -88,9 +88,9 @@ pub const CSRAddr = enum(u12) {
     hpmcounter31 = 0xC1F,
 
     // RV32 only
-    cycleh = 0xC00,
-    timeh = 0xC01,
-    instreth = 0xC02,
+    cycleh = 0xC80,
+    timeh = 0xC81,
+    instreth = 0xC82,
     hpmcounter3h = 0xC83,
     hpmcounter4h = 0xC84,
     hpmcounter5h = 0xC85,
@@ -104,22 +104,22 @@ pub const CSRAddr = enum(u12) {
     hpmcounter13h = 0xC8D,
     hpmcounter14h = 0xC8E,
     hpmcounter15h = 0xC8F,
-    hpmcounter16h = 0xC10,
-    hpmcounter17h = 0xC11,
-    hpmcounter18h = 0xC12,
-    hpmcounter19h = 0xC13,
-    hpmcounter20h = 0xC14,
-    hpmcounter21h = 0xC15,
-    hpmcounter22h = 0xC16,
-    hpmcounter23h = 0xC17,
-    hpmcounter24h = 0xC18,
-    hpmcounter25h = 0xC19,
-    hpmcounter26h = 0xC1A,
-    hpmcounter27h = 0xC1B,
-    hpmcounter28h = 0xC1C,
-    hpmcounter29h = 0xC1D,
-    hpmcounter30h = 0xC1E,
-    hpmcounter31h = 0xC1F,
+    hpmcounter16h = 0xC90,
+    hpmcounter17h = 0xC91,
+    hpmcounter18h = 0xC92,
+    hpmcounter19h = 0xC93,
+    hpmcounter20h = 0xC94,
+    hpmcounter21h = 0xC95,
+    hpmcounter22h = 0xC96,
+    hpmcounter23h = 0xC97,
+    hpmcounter24h = 0xC98,
+    hpmcounter25h = 0xC99,
+    hpmcounter26h = 0xC9A,
+    hpmcounter27h = 0xC9B,
+    hpmcounter28h = 0xC9C,
+    hpmcounter29h = 0xC9D,
+    hpmcounter30h = 0xC9E,
+    hpmcounter31h = 0xC9F,
 
     // RISC-V supervisor-level
 
@@ -156,22 +156,18 @@ pub const CSRAddr = enum(u12) {
     hie = 0x604,
     hcounteren = 0x606,
     hgeie = 0x607,
-
     htval = 0x642,
     hip = 0x644,
     hvip = 0x645,
     htinst = 0x64A,
     hgeip = 0xE12,
-
     henvcfg = 0x60A,
 
     // RV32 only
     henvcfgh = 0x61A,
 
     hgatp = 0x680,
-
     hcontext = 0x6A8,
-
     htimedelta = 0x605,
 
     // RV32 only
@@ -205,7 +201,6 @@ pub const CSRAddr = enum(u12) {
     mimpid = 0xF13,
     mhartid = 0xF14,
     mconfigptr = 0xF15,
-
     mstatus = 0x300,
     misa = 0x301,
     medeleg = 0x302,
@@ -225,7 +220,6 @@ pub const CSRAddr = enum(u12) {
     mip = 0x344,
     mtinst = 0x34A,
     mtval2 = 0x34B,
-
     menvcfg = 0x30A,
     mseccfg = 0x747,
 
@@ -252,23 +246,82 @@ pub const CSRAddr = enum(u12) {
     pmpcfg13 = 0x3AD,
     pmpcfg15 = 0x3AF,
 
-    pmpaddr0 = 0x380,
+    pmpaddr0 = 0x3B0,
+    pmpaddr1 = 0x3B1,
+    pmpaddr2 = 0x3B2,
+    pmpaddr3 = 0x3B3,
+    pmpaddr4 = 0x3B4,
+    pmpaddr5 = 0x3B5,
+    pmpaddr6 = 0x3B6,
+    pmpaddr7 = 0x3B7,
+    pmpaddr8 = 0x3B8,
+    pmpaddr9 = 0x3B9,
+    pmpaddr10 = 0x3BA,
+    pmpaddr11 = 0x3BB,
+    pmpaddr12 = 0x3BC,
+    pmpaddr13 = 0x3BD,
+    pmpaddr14 = 0x3BE,
+    pmpaddr15 = 0x3BF,
+    pmpaddr16 = 0x3C0,
+    pmpaddr17 = 0x3C1,
+    pmpaddr18 = 0x3C2,
+    pmpaddr19 = 0x3C3,
+    pmpaddr20 = 0x3C4,
+    pmpaddr21 = 0x3C5,
+    pmpaddr22 = 0x3C6,
+    pmpaddr23 = 0x3C7,
+    pmpaddr24 = 0x3C8,
+    pmpaddr25 = 0x3C9,
+    pmpaddr26 = 0x3CA,
+    pmpaddr27 = 0x3CB,
+    pmpaddr28 = 0x3CC,
+    pmpaddr29 = 0x3CD,
+    pmpaddr30 = 0x3CE,
+    pmpaddr31 = 0x3CF,
+    pmpaddr32 = 0x3D0,
+    pmpaddr33 = 0x3D1,
+    pmpaddr34 = 0x3D2,
+    pmpaddr35 = 0x3D3,
+    pmpaddr36 = 0x3D4,
+    pmpaddr37 = 0x3D5,
+    pmpaddr38 = 0x3D6,
+    pmpaddr39 = 0x3D7,
+    pmpaddr40 = 0x3D8,
+    pmpaddr41 = 0x3D9,
+    pmpaddr42 = 0x3DA,
+    pmpaddr43 = 0x3DB,
+    pmpaddr44 = 0x3DC,
+    pmpaddr45 = 0x3DD,
+    pmpaddr46 = 0x3DE,
+    pmpaddr47 = 0x3DF,
+    pmpaddr48 = 0x3E0,
+    pmpaddr49 = 0x3E1,
+    pmpaddr50 = 0x3E2,
+    pmpaddr51 = 0x3E3,
+    pmpaddr52 = 0x3E4,
+    pmpaddr53 = 0x3E5,
+    pmpaddr54 = 0x3E6,
+    pmpaddr55 = 0x3E7,
+    pmpaddr56 = 0x3E8,
+    pmpaddr57 = 0x3E9,
+    pmpaddr58 = 0x3EA,
+    pmpaddr59 = 0x3EB,
+    pmpaddr60 = 0x3EC,
+    pmpaddr61 = 0x3ED,
+    pmpaddr62 = 0x3EE,
     pmpaddr63 = 0x3EF,
-
     mstateen0 = 0x30C,
     mstateen1 = 0x30D,
     mstateen2 = 0x30E,
-    mstateen3 = 0x30A,
+    mstateen3 = 0x30F,
     mstateen0h = 0x31C,
     mstateen1h = 0x31D,
     mstateen2h = 0x31E,
-    mstateen3h = 0x31A,
-
+    mstateen3h = 0x31F,
     mnscratch = 0x740,
     mnepc = 0x741,
     mncause = 0x742,
     mnstatus = 0x744,
-
     mcycle = 0xB00,
     minstret = 0xB02,
     mhpmcounter3 = 0xB03,
@@ -336,10 +389,64 @@ pub const CSRAddr = enum(u12) {
 
     mcountinhibit = 0x320,
     mhpmevent3 = 0x323,
+    mhpmevent4 = 0x324,
+    mhpmevent5 = 0x325,
+    mhpmevent6 = 0x326,
+    mhpmevent7 = 0x327,
+    mhpmevent8 = 0x328,
+    mhpmevent9 = 0x329,
+    mhpmevent10 = 0x32A,
+    mhpmevent11 = 0x32B,
+    mhpmevent12 = 0x32C,
+    mhpmevent13 = 0x32D,
+    mhpmevent14 = 0x32E,
+    mhpmevent15 = 0x32F,
+    mhpmevent16 = 0x330,
+    mhpmevent17 = 0x331,
+    mhpmevent18 = 0x332,
+    mhpmevent19 = 0x333,
+    mhpmevent20 = 0x334,
+    mhpmevent21 = 0x335,
+    mhpmevent22 = 0x336,
+    mhpmevent23 = 0x337,
+    mhpmevent24 = 0x338,
+    mhpmevent25 = 0x339,
+    mhpmevent26 = 0x33A,
+    mhpmevent27 = 0x33B,
+    mhpmevent28 = 0x33C,
+    mhpmevent29 = 0x33D,
+    mhpmevent30 = 0x33E,
     mhpmevent31 = 0x33F,
 
     // RV32 only
     mhpmevent3h = 0x723,
+    mhpmevent4h = 0x724,
+    mhpmevent5h = 0x725,
+    mhpmevent6h = 0x726,
+    mhpmevent7h = 0x727,
+    mhpmevent8h = 0x728,
+    mhpmevent9h = 0x729,
+    mhpmevent10h = 0x72A,
+    mhpmevent11h = 0x72B,
+    mhpmevent12h = 0x72C,
+    mhpmevent13h = 0x72D,
+    mhpmevent14h = 0x72E,
+    mhpmevent15h = 0x72F,
+    mhpmevent16h = 0x710,
+    mhpmevent17h = 0x711,
+    mhpmevent18h = 0x712,
+    mhpmevent19h = 0x713,
+    mhpmevent20h = 0x714,
+    mhpmevent21h = 0x715,
+    mhpmevent22h = 0x716,
+    mhpmevent23h = 0x717,
+    mhpmevent24h = 0x718,
+    mhpmevent25h = 0x719,
+    mhpmevent26h = 0x71A,
+    mhpmevent27h = 0x71B,
+    mhpmevent28h = 0x71C,
+    mhpmevent29h = 0x71D,
+    mhpmevent30h = 0x71E,
     mhpmevent31h = 0x73F,
 
     tselect = 0x7A0,
@@ -347,11 +454,34 @@ pub const CSRAddr = enum(u12) {
     tdata2 = 0x7A2,
     tdata3 = 0x7A3,
     mcontext = 0x7A8,
-
     dscr = 0x7B0,
     dpc = 0x7B1,
     dscratch0 = 0x7B2,
     dscratch1 = 0x7B3,
+
+    pub fn to_u12(self: @This()) u12 {
+        return @intFromEnum(self);
+    }
+};
+
+pub const CSRAddrU = union(enum) {
+    known: CSRAddr,
+    unknown: u12,
+
+    pub fn from_u12(value: u12) @This() {
+        if (std.meta.intToEnum(CSRAddr, value)) |known| {
+            return .{ .known = known };
+        } else {
+            return .{ .unknown = value };
+        }
+    }
+
+    pub fn to_u12(self: @This()) u12 {
+        return switch (self) {
+            .knwon => |v| v.to_u12(),
+            .unknwon => |u| u,
+        };
+    }
 };
 
 pub const VarInstr = union(enum) {

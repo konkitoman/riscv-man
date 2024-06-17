@@ -5,6 +5,8 @@ pub const GeneralRegsNames = base.GeneralRegsNames;
 pub const GeneralReg = base.GeneralReg;
 pub const VarInstr = base.VarInstr;
 pub const ImmediateVariant = base.ImmediateVariantX32;
+pub const CSRAddr = base.CSRAddr;
+pub const CSRAddrU = base.CSRAddrU;
 
 const print = std.debug.print;
 
