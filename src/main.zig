@@ -4,6 +4,8 @@ const print = std.debug.print;
 const riscv = @import("riscv.zig");
 const ASM = @import("riscv-asm.zig");
 
+const CPU = riscv.buildCPU(u64, 1);
+
 pub fn main() !void {
     var args = std.process.args();
     const path = args.next();
@@ -188,7 +190,7 @@ pub fn main() !void {
     const program_section = sections.items[program_section_index];
     const program_data = sections.items[program_data_index];
 
-    var cpu = riscv.CPU.init(heap.allocator());
+    var cpu = CPU.init(heap.allocator());
     defer cpu.deinit();
 
     try cpu.set_memory_size(program_section.data.items.len + program_data.data.items.len);
@@ -238,21 +240,21 @@ pub fn main() !void {
         std.debug.dump_hex(cpu.memory.items);
     }
 
-    cpu.threads[0].pc = elf_header_raw.e_entry;
+    cpu.harts[0].pc = @intCast(elf_header_raw.e_entry);
     // cpu.threads[0].g_regs[riscv.GeneralReg.SP.to_u5()] = program_data.section.sh_addr;
 
     print("Start Emulation...\n", .{});
     while (cpu.step()) {
-        for (&cpu.threads, 0..) |*thread, i| {
-            print("Thread: {}\n", .{i});
+        for (&cpu.harts, 0..) |*hart, i| {
+            print("Hart: {}\n", .{i});
             const padding = "    ";
-            for (&thread.g_regs, riscv.GeneralRegsNames) |*g_reg, x| {
+            for (&hart.g_regs, riscv.GeneralRegsNames) |*g_reg, x| {
                 print("\t{s}{s} = 0x{x:0>16}\n", .{ x, padding[x.len..], g_reg.* });
             }
-            print("\tPC   = {x}\n", .{thread.pc});
+            print("\tPC   = {x}\n", .{hart.pc});
             print("\tCSRs:\n", .{});
 
-            dump_csrs(thread.*, &[_]riscv.CSRAddr{ .fflags, .frm, .fcsr, .cycle, .time, .instret, .mvendorid, .marchid, .mimpid, .mhartid, .mconfigptr, .mstatus, .misa, .medeleg, .mideleg, .mie, .mtvec, .mcounteren, .mscratch, .mepc, .mcause, .mtval, .mip, .mtinst, .mtval2, .menvcfg, .mseccfg, .pmpcfg0, .pmpaddr0, .pmpaddr1, .mstateen0, .mstateen1, .mstateen2, .mstateen3 });
+            dump_csrs(hart.*, &[_]riscv.CSRAddr{ .fflags, .frm, .fcsr, .cycle, .time, .instret, .mvendorid, .marchid, .mimpid, .mhartid, .mconfigptr, .mstatus, .misa, .medeleg, .mideleg, .mie, .mtvec, .mcounteren, .mscratch, .mepc, .mcause, .mtval, .mip, .mtinst, .mtval2, .menvcfg, .mseccfg, .pmpcfg0, .pmpaddr0, .pmpaddr1, .mstateen0, .mstateen1, .mstateen2, .mstateen3 });
         }
 
         {
@@ -264,7 +266,7 @@ pub fn main() !void {
     }
 }
 
-pub fn dump_csrs(thread: riscv.CPU.Thread, csrs: []const riscv.CSRAddr) void {
+pub fn dump_csrs(thread: CPU.Hart, csrs: []const riscv.CSRAddr) void {
     for (csrs) |csr| {
         print("{s} = ", .{@tagName(csr)});
         print("{x}\n", .{thread.csrs[csr.to_u12()]});
