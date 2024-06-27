@@ -37,10 +37,77 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
     return struct {
         const CPU = @This();
 
+        pub const CSR = struct {
+            data: uarch,
+            read: *const fn (self: *CSR) uarch,
+            write: *const fn (self: *CSR, value: uarch) void,
+        };
+
+        pub const CSRU = struct {
+            o_csr: ?CSR,
+
+            pub fn read(self: *@This()) uarch {
+                return if (self.o_csr) |*csr| csr.read(csr) else 0;
+            }
+
+            pub fn write(self: *@This(), value: uarch) void {
+                if (self.o_csr) |*csr| csr.write(csr, value);
+            }
+
+            pub fn set(self: *@This(), value: uarch) void {
+                const tmp = self.read();
+                self.write(tmp | value);
+            }
+
+            pub fn clear(self: *@This(), value: uarch) void {
+                const tmp = self.read();
+                self.write(tmp ^ (tmp & value));
+            }
+        };
+
+        pub const HartMode = enum(u2) {
+            U = 0,
+            S = 1,
+            H = 2,
+            M = 3,
+
+            fn to_u2(self: @This()) u2 {
+                return @intFromEnum(self);
+            }
+
+            fn from_u2(value: u2) @This() {
+                return @enumFromInt(value);
+            }
+        };
+
+        pub const Permisions = enum(u2) {
+            None = 0,
+            Read = 1,
+            Write = 2,
+            ReadWrite = 3,
+
+            fn read(self: @This()) bool {
+                return (self.to_u2() & 1) > 0;
+            }
+
+            fn write(self: @This()) bool {
+                return (self.to_u2() & 2) > 0;
+            }
+
+            fn to_u2(self: @This()) u2 {
+                return @intFromEnum(self);
+            }
+
+            fn from_u2(value: u2) @This() {
+                return @enumFromInt(value);
+            }
+        };
+
         pub const Hart = struct {
             g_regs: [32]uarch,
             pc: uarch,
-            csrs: [4096]u64,
+            csrs: [4096]CSRU,
+            mode: HartMode,
 
             pub fn step(self: *Hart, cpu: *CPU) !void {
                 var memory: [8]u8 = undefined;
@@ -81,6 +148,132 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                         self.pc += 8;
                     },
                 } else |e| print("When reading VarInstr at {x}, an error acured: {}\n", .{ self.pc, e });
+            }
+
+            fn has_csr_permisions(self: @This(), addr: u12) Permisions {
+                switch (self.mode) {
+                    .U => {
+                        if (addr >= 0x000 and 0x0FF > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0x400 and 0x4FF > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0x800 and 0x8FF > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0xC00 and 0xCBF > addr) {
+                            return .Read;
+                        }
+                        if (addr >= 0xCC0 and 0xCFF > addr) {
+                            return .Read;
+                        }
+                    },
+                    .S => {
+                        if (addr >= 0x100 and 0x1FF > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0x500 and 0x57F > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0x580 and 0x5BF > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0x900 and 0x97F > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0x980 and 0x9BF > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0x9C0 and 0x9FF > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0xD00 and 0xD7F > addr) {
+                            return .Read;
+                        }
+                        if (addr >= 0xD80 and 0xD8F > addr) {
+                            return .Read;
+                        }
+                        if (addr >= 0xDC0 and 0xDFF > addr) {
+                            return .Read;
+                        }
+                    },
+                    .H => {
+                        if (addr >= 0x200 and 0x2FF > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0x600 and 0x67F > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0x680 and 0x6BF > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0x680 and 0x6BF > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0x6C0 and 0x6FF > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0xA00 and 0xA7F > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0xA80 and 0xABF > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0xAC0 and 0xAFF > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0xE00 and 0xE7F > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0xE80 and 0xEBF > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0xEC0 and 0xEFF > addr) {
+                            return .ReadWrite;
+                        }
+                    },
+                    .M => {
+                        if (addr >= 0x300 and 0x3FF > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0x700 and 0x77F > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0x780 and 0x79F > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0x7A0 and 0x7AF > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0x7B0 and 0x7BF > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0x7C0 and 0x7FF > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0xB00 and 0xB7F > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0xB80 and 0xBBF > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0xBC0 and 0xBFF > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0xF00 and 0xF7F > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0xF80 and 0xFBF > addr) {
+                            return .ReadWrite;
+                        }
+                        if (addr >= 0xFC0 and 0xFFF > addr) {
+                            return .ReadWrite;
+                        }
+                    },
+                }
+
+                return .None;
             }
 
             fn lui(self: *@This(), instr: ImmediateVariant) void {
@@ -399,61 +592,71 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                     },
                     // CSRRW
                     0b001 => {
-                        const csr: u12 = @bitCast(instr.i.imm_11_0);
-                        if (instr.i.rd != 0) {
-                            self.g_regs[instr.i.rd] = @truncate(self.csrs[csr]);
+                        const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
+                        const per = self.has_csr_permisions(csr_addr);
+                        if (instr.i.rd != 0 and per.read()) {
+                            self.g_regs[instr.i.rd] = self.csrs[csr_addr].read();
                         }
-                        self.csrs[csr] = self.g_regs[instr.i.rs1];
+                        if (per.write()) {
+                            _ = self.csrs[csr_addr].write(self.g_regs[instr.i.rs1]);
+                        }
                     },
                     // CSRRS
                     0b010 => {
-                        const csr: u12 = @bitCast(instr.i.imm_11_0);
-                        if (instr.i.rd == 0) {
-                            self.g_regs[instr.i.rd] = @truncate(self.csrs[csr]);
+                        const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
+                        const per = self.has_csr_permisions(csr_addr);
+                        if (instr.i.rd == 0 and per.read()) {
+                            self.g_regs[instr.i.rd] = self.csrs[csr_addr].read();
                         }
-                        if (instr.i.rs1 != 0) {
-                            self.csrs[csr] |= self.g_regs[instr.i.rs1];
+                        if (instr.i.rs1 != 0 and per.write()) {
+                            _ = self.csrs[csr_addr].set(self.g_regs[instr.i.rs1]);
                         }
                     },
                     // CSRRC
                     0b011 => {
-                        const csr: u12 = @bitCast(instr.i.imm_11_0);
-                        if (instr.i.rd == 0) {
-                            self.g_regs[instr.i.rd] = @truncate(self.csrs[csr]);
+                        const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
+                        const per = self.has_csr_permisions(csr_addr);
+                        if (instr.i.rd == 0 and per.read()) {
+                            self.g_regs[instr.i.rd] = self.csrs[csr_addr].read();
                         }
-                        if (instr.i.rs1 != 0) {
-                            self.csrs[csr] ^= self.csrs[csr] & self.g_regs[instr.i.rs1];
+                        if (instr.i.rs1 != 0 and per.write()) {
+                            _ = self.csrs[csr_addr].clear(self.g_regs[instr.i.rs1]);
                         }
                     },
                     // CSRRWI
                     0b101 => {
-                        const csr: u12 = @bitCast(instr.i.imm_11_0);
+                        const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
+                        const per = self.has_csr_permisions(csr_addr);
                         const value: u64 = @as(u5, @bitCast(instr.i.rs1));
-                        if (instr.i.rd != 0) {
-                            self.g_regs[instr.i.rd] = @truncate(self.csrs[csr]);
+                        if (instr.i.rd != 0 and per.read()) {
+                            self.g_regs[instr.i.rd] = self.csrs[csr_addr].read();
                         }
-                        self.csrs[csr] = value;
+                        if (per.write()) {
+                            _ = self.csrs[csr_addr].write(value);
+                        }
                     },
                     // CSRRSI
                     0b110 => {
-                        const csr: u12 = @bitCast(instr.i.imm_11_0);
+                        const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
+                        const per = self.has_csr_permisions(csr_addr);
                         const value: u64 = @as(u5, @bitCast(instr.i.rs1));
-                        if (instr.i.rd == 0) {
-                            self.g_regs[instr.i.rd] = @truncate(self.csrs[csr]);
+                        if (instr.i.rd == 0 and per.read()) {
+                            self.g_regs[instr.i.rd] = self.csrs[csr_addr].read();
                         }
-                        if (value != 0) {
-                            self.csrs[csr] |= value;
+                        if (value != 0 and per.write()) {
+                            _ = self.csrs[csr_addr].set(value);
                         }
                     },
                     // CSRRCI
                     0b111 => {
-                        const csr: u12 = @bitCast(instr.i.imm_11_0);
+                        const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
+                        const per = self.has_csr_permisions(csr_addr);
                         const value: u64 = @as(u5, @bitCast(instr.i.rs1));
-                        if (instr.i.rd == 0) {
-                            self.g_regs[instr.i.rd] = @truncate(self.csrs[csr]);
+                        if (instr.i.rd == 0 and per.read()) {
+                            self.g_regs[instr.i.rd] = self.csrs[csr_addr].read();
                         }
-                        if (value != 0) {
-                            self.csrs[csr] ^= self.csrs[csr] & value;
+                        if (value != 0 and per.write()) {
+                            _ = self.csrs[csr_addr].clear(value);
                         }
                     },
                     else => {
@@ -470,13 +673,32 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
         memory_maps: std.ArrayList(MemoryMap),
         memory: std.ArrayList(u8),
 
-        pub fn init(allocator: Allocator) CPU {
-            return .{
+        pub const CSRDeclarator = struct {
+            csr_addr: u12,
+            initial_csr: CSR,
+        };
+
+        pub fn init(allocator: Allocator, csr_declarators: []const CSRDeclarator) CPU {
+            var cpu = CPU{
                 .allocator = allocator,
-                .harts = std.mem.zeroes([1]Hart),
+                .harts = std.mem.zeroes([harts_len]Hart),
                 .memory_maps = std.ArrayList(MemoryMap).init(allocator),
                 .memory = std.ArrayList(u8).init(allocator),
             };
+
+            for (&cpu.harts, 0..) |*hart, i| {
+                for (csr_declarators) |csr_declarator| {
+                    hart.csrs[csr_declarator.csr_addr].o_csr = csr_declarator.initial_csr;
+                }
+
+                hart.mode = .M;
+
+                _ = hart.csrs[CSRAddr.mhartid.to_u12()].write(i);
+                _ = hart.csrs[CSRAddr.mvendorid.to_u12()].write(2121);
+                _ = hart.csrs[CSRAddr.marchid.to_u12()].write(64);
+            }
+
+            return cpu;
         }
 
         pub fn deinit(self: *CPU) void {
@@ -568,5 +790,24 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                 try thread.step(self);
             }
         }
+
+        pub const CSRSMachine = struct {
+            fn r_generic(self: *CSR) uarch {
+                return self.data;
+            }
+            fn w_generic(self: *CSR, value: uarch) void {
+                self.data = value;
+            }
+
+            const DEFAULT_CSR = CSR{ .data = 0, .read = &r_generic, .write = &w_generic };
+
+            pub const VENDORID: CSRDeclarator = .{ .csr_addr = CSRAddr.mhartid.to_u12(), .initial_csr = DEFAULT_CSR };
+            pub const ARCHID: CSRDeclarator = .{ .csr_addr = CSRAddr.marchid.to_u12(), .initial_csr = DEFAULT_CSR };
+            pub const IMPID: CSRDeclarator = .{ .csr_addr = CSRAddr.mimpid.to_u12(), .initial_csr = DEFAULT_CSR };
+            pub const HARTID: CSRDeclarator = .{ .csr_addr = CSRAddr.mhartid.to_u12(), .initial_csr = DEFAULT_CSR };
+            pub const MSTATUS: CSRDeclarator = .{ .csr_addr = CSRAddr.mstatus.to_u12(), .initial_csr = DEFAULT_CSR };
+
+            pub const CSRS = [_]CSRDeclarator{ VENDORID, ARCHID, IMPID, HARTID, MSTATUS };
+        };
     };
 }

@@ -190,7 +190,7 @@ pub fn main() !void {
     const program_section = sections.items[program_section_index];
     const program_data = sections.items[program_data_index];
 
-    var cpu = CPU.init(heap.allocator());
+    var cpu = CPU.init(heap.allocator(), &CPU.CSRSMachine.CSRS);
     defer cpu.deinit();
 
     try cpu.set_memory_size(program_section.data.items.len + program_data.data.items.len);
@@ -266,10 +266,14 @@ pub fn main() !void {
     }
 }
 
-pub fn dump_csrs(thread: CPU.Hart, csrs: []const riscv.CSRAddr) void {
+pub fn dump_csrs(hart: CPU.Hart, csrs: []const riscv.CSRAddr) void {
     for (csrs) |csr| {
         print("{s} = ", .{@tagName(csr)});
-        print("{x}\n", .{thread.csrs[csr.to_u12()]});
+        if (hart.csrs[csr.to_u12()].o_csr) |c| {
+            print("{}\n", .{c});
+        } else {
+            print("Unimplemented\n", .{});
+        }
     }
 }
 
