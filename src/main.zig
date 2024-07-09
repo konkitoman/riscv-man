@@ -110,7 +110,10 @@ pub fn main() !void {
     var program_data_index: usize = 0;
 
     for (sections.items, 0..) |sec, i| {
-        var name = sections.items[elf_header_raw.e_shstrndx].data.items[sec.section.sh_name..];
+        var name: []const u8 = "Unknown"[0..];
+        if (elf_header_raw.e_shstrndx != 0) {
+            name = sections.items[elf_header_raw.e_shstrndx].data.items[sec.section.sh_name..];
+        }
         for (name, 0..) |byte, b| {
             if (byte == 0) {
                 name = name[0..b];
@@ -167,10 +170,26 @@ pub fn main() !void {
 
     print("Program Section Index: {d}\n", .{program_section_index});
 
+    var cpu = CPU.init(heap.allocator(), &CPU.CSRSMachine.CSRS, .{});
+    defer cpu.deinit();
+
     for (program_headers.items) |program_header| {
         const type_name = switch (program_header.p_type) {
             std.elf.PT_NULL => "Null",
-            std.elf.PT_LOAD => "Load",
+            std.elf.PT_LOAD => load: {
+                const p = cpu.get_memory_size();
+                try cpu.set_memory_size(p + program_header.p_memsz);
+                try cpu.add_memory_map(.{ .start = p, .end = p + program_header.p_filesz - 1, .to_start = program_header.p_vaddr, .to_end = (program_header.p_vaddr + program_header.p_memsz) - 1 });
+                var buffer = try std.ArrayList(u8).initCapacity(heap.allocator(), program_header.p_memsz);
+                defer buffer.deinit();
+                for (0..program_header.p_memsz) |_| {
+                    try buffer.append(0);
+                }
+                try program_file.seekTo(program_header.p_offset);
+                _ = try program_file.readAll(buffer.items);
+                try cpu.vmemory_write_all(program_header.p_vaddr, buffer.items);
+                break :load "Load";
+            },
             std.elf.PT_DYNAMIC => "Dynamic",
             std.elf.PT_INTERP => "Interp",
             std.elf.PT_NOTE => "Note",
@@ -187,49 +206,51 @@ pub fn main() !void {
         print("Type: {s}\n", .{type_name});
     }
 
-    const program_section = sections.items[program_section_index];
-    const program_data = sections.items[program_data_index];
+    // const program_section = sections.items[program_section_index];
+    // const program_data = sections.items[program_data_index];
 
-    var cpu = CPU.init(heap.allocator(), &CPU.CSRSMachine.CSRS);
-    defer cpu.deinit();
-
-    try cpu.set_memory_size(program_section.data.items.len + program_data.data.items.len);
+    // try cpu.set_memory_size(program_section.data.items.len + program_data.data.items.len);
 
     // PROGRAM
-    try cpu.add_memory_map(.{ //
-        .start = 0,
-        .end = program_section.section.sh_size - 1,
-        .to_start = program_section.section.sh_addr,
-        .to_end = (program_section.section.sh_addr + program_section.section.sh_size) - 1,
-    });
-    try cpu.vmemory_write_all(program_section.section.sh_addr, program_section.data.items);
+    // try cpu.add_memory_map(.{ //
+    //     .start = 0,
+    //     .end = program_section.section.sh_size - 1,
+    //     .to_start = program_section.section.sh_addr,
+    //     .to_end = (program_section.section.sh_addr + program_section.section.sh_size) - 1,
+    // });
+    // try cpu.vmemory_write_all(program_section.section.sh_addr, program_section.data.items);
 
     // DATA
-    try cpu.add_memory_map(.{ //
-        .start = program_section.data.items.len,
-        .end = (program_section.data.items.len + program_data.data.items.len) - 1,
-        .to_start = program_data.section.sh_addr,
-        .to_end = (program_data.section.sh_addr + program_section.section.sh_size) - 1,
-    });
-    try cpu.vmemory_write_all(program_data.section.sh_addr, program_data.data.items);
+    // try cpu.add_memory_map(.{ //
+    //     .start = program_section.data.items.len,
+    //     .end = (program_section.data.items.len + program_data.data.items.len) - 1,
+    //     .to_start = program_data.section.sh_addr,
+    //     .to_end = (program_data.section.sh_addr + program_section.section.sh_size) - 1,
+    // });
+    // try cpu.vmemory_write_all(program_data.section.sh_addr, program_data.data.items);
 
     // STACK
     // try cpu.add_memory_map(.{ .start = program_section.data.items.len, .end = program_section.data.items.len + 1024, .to_start = std.math.maxInt(u64) - 1024, .to_end = std.math.maxInt(u64) });
 
-    print("MemoryMap PROGRAM: {?}\n", .{cpu.memory_maps.items[0]});
-    print("MemoryMap DATA: {?}\n", .{cpu.memory_maps.items[1]});
+    for (cpu.memory_maps.items, 0..) |map, i| {
+        print("Memory Map {d}: {?}\n", .{ i, map });
+    }
+
     {
+        print("Program:\n", .{});
         var memory: [4]u8 = undefined;
         var test_memory: [4]u8 = undefined;
-        var p: usize = elf_header_raw.e_entry;
+        var p: CPU.UARCH = @truncate(elf_header_raw.e_entry);
         while (cpu.vmemory_read_all(p, &memory)) {
             const ins = try ASM.Instr.from_memory(&memory);
-            p += ins.len();
+            p += @truncate(ins.len());
             // assambler base integrity check
             _ = try ins.to_memory(&test_memory);
             try ins.write(std.io.getStdOut().writer().any());
-            if (!std.mem.eql(u8, &memory, &test_memory)) {
+            if (!std.mem.eql(u8, memory[0..ins.len()], test_memory[0..ins.len()])) {
+                print("^ = Lossy Instruction:\n", .{});
                 dump_hex("", &memory);
+                print("!=\n", .{});
                 dump_hex("", &test_memory);
                 return error.LossyInstruction;
             }
@@ -240,27 +261,27 @@ pub fn main() !void {
         std.debug.dump_hex(cpu.memory.items);
     }
 
-    cpu.harts[0].pc = @intCast(elf_header_raw.e_entry);
+    cpu.harts[0].pc = @truncate(elf_header_raw.e_entry);
     // cpu.threads[0].g_regs[riscv.GeneralReg.SP.to_u5()] = program_data.section.sh_addr;
 
     print("Start Emulation...\n", .{});
     while (cpu.step()) {
-        for (&cpu.harts, 0..) |*hart, i| {
-            print("Hart: {}\n", .{i});
-            const padding = "    ";
-            for (&hart.g_regs, riscv.GeneralRegsNames) |*g_reg, x| {
-                print("\t{s}{s} = 0x{x:0>16}\n", .{ x, padding[x.len..], g_reg.* });
-            }
-            print("\tPC   = {x}\n", .{hart.pc});
-            print("\tCSRs:\n", .{});
+        // for (&cpu.harts, 0..) |*hart, i| {
+        //     print("Hart: {}\n", .{i});
+        //     const padding = "    ";
+        //     for (&hart.g_regs, riscv.GeneralRegsNames) |*g_reg, x| {
+        //         print("\t{s}{s} = 0x{x:0>16}\n", .{ x, padding[x.len..], g_reg.* });
+        //     }
+        //     print("\tPC   = {x}\n", .{hart.pc});
+        //     print("\tCSRs:\n", .{});
 
-            dump_csrs(hart.*, &[_]riscv.CSRAddr{ .fflags, .frm, .fcsr, .cycle, .time, .instret, .mvendorid, .marchid, .mimpid, .mhartid, .mconfigptr, .mstatus, .misa, .medeleg, .mideleg, .mie, .mtvec, .mcounteren, .mscratch, .mepc, .mcause, .mtval, .mip, .mtinst, .mtval2, .menvcfg, .mseccfg, .pmpcfg0, .pmpaddr0, .pmpaddr1, .mstateen0, .mstateen1, .mstateen2, .mstateen3 });
-        }
+        //     dump_csrs(hart.*, &[_]riscv.CSRAddr{ .fflags, .frm, .fcsr, .cycle, .time, .instret, .mvendorid, .marchid, .mimpid, .mhartid, .mconfigptr, .mstatus, .misa, .medeleg, .mideleg, .mie, .mtvec, .mcounteren, .mscratch, .mepc, .mcause, .mtval, .mip, .mtinst, .mtval2, .menvcfg, .mseccfg, .pmpcfg0, .pmpaddr0, .pmpaddr1, .mstateen0, .mstateen1, .mstateen2, .mstateen3 });
+        // }
 
-        {
-            print("MEM:\n", .{});
-            std.debug.dump_hex(cpu.memory.items);
-        }
+        // {
+        //     print("MEM:\n", .{});
+        //     std.debug.dump_hex(cpu.memory.items);
+        // }
     } else |e| {
         print("Finish with: {?}\n", .{e});
     }
@@ -278,9 +299,8 @@ pub fn dump_csrs(hart: CPU.Hart, csrs: []const riscv.CSRAddr) void {
 }
 
 pub fn dump_hex(pad: []const u8, bytes: []const u8) void {
-    const stderr_mutex = std.debug.getStderrMutex();
-    stderr_mutex.lock();
-    defer stderr_mutex.unlock();
+    std.debug.lockStdErr();
+    defer std.debug.unlockStdErr();
     dump_hex_fallible(pad, bytes) catch {};
 }
 

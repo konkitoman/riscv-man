@@ -37,6 +37,18 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
     return struct {
         const CPU = @This();
 
+        pub const UARCH = uarch;
+
+        pub const EEI = struct {
+            ecall: *const fn (hart: *Hart, cpu: *CPU) void = default_ecall,
+
+            pub fn default_ecall(hart: *Hart, cpu: *CPU) void {
+                print("ECALL not implemented!\n", .{});
+                _ = hart;
+                _ = cpu;
+            }
+        };
+
         pub const CSR = struct {
             data: uarch,
             read: *const fn (self: *CSR) uarch,
@@ -136,7 +148,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                             0b0010011 => self.op_imm(instr),
                             0b0110011 => self.op(instr),
                             0b0001111 => self.misc_mem(instr),
-                            0b1110011 => try self.system(instr),
+                            0b1110011 => try self.system(instr, cpu),
                             else => {
                                 print("Opcode not implemented! {b:0>7}\n", .{instr.opcode});
                                 self.pc += 4;
@@ -288,7 +300,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
             fn auipc(self: *@This(), instr: ImmediateVariant) void {
                 const offset = @as(uarch, instr.u.imm_31_12) << 12;
                 if (instr.u.rd != 0) {
-                    self.g_regs[instr.u.rd] = self.pc + offset;
+                    self.g_regs[instr.u.rd] = self.pc +% offset;
                 }
                 self.pc += 4;
             }
@@ -577,11 +589,33 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                 self.pc += 4;
             }
 
-            fn system(self: *@This(), instr: ImmediateVariant) !void {
+            fn system(self: *@This(), instr: ImmediateVariant, cpu: *CPU) !void {
                 switch (instr.i.funct3) {
                     0b000 => switch (instr.i.imm_11_0) {
                         0 => { // ECALL
-                            print("ECALL not implemented!\n", .{});
+                            cpu.eei.ecall(self, cpu);
+
+                            // const padding = "    ";
+                            // for (&self.g_regs, GeneralRegsNames) |*g_reg, x| {
+                            //     print("\t{s}{s} = 0x{x:0>16}\n", .{ x, padding[x.len..], g_reg.* });
+                            // }
+                            // print("\tPC   = {x}\n", .{self.pc});
+
+                            // For Test suite
+                            // if (self.g_regs[GeneralReg.A7.to_u5()] == 93) {
+                            // const tests = self.g_regs[GeneralReg.GP.to_u5()];
+                            //     const a0 = self.g_regs[GeneralReg.A0.to_u5()];
+                            //     if (a0 == 0) {
+                            //         print("Pass\n", .{});
+                            //     } else {
+                            //         print("Fail: {d}\n", .{a0});
+                            //     }
+                            // }
+                            // print("\tCSRs:\n", .{});
+
+                            // dump_csrs(hart.*, &[_]riscv.CSRAddr{ .fflags, .frm, .fcsr, .cycle, .time, .instret, .mvendorid, .marchid, .mimpid, .mhartid, .mconfigptr, .mstatus, .misa, .medeleg, .mideleg, .mie, .mtvec, .mcounteren, .mscratch, .mepc, .mcause, .mtval, .mip, .mtinst, .mtval2, .menvcfg, .mseccfg, .pmpcfg0, .pmpaddr0, .pmpaddr1, .mstateen0, .mstateen1, .mstateen2, .mstateen3 });
+                            // print("MEM:\n", .{});
+                            // std.debug.dump_hex(cpu.memory.items);
                         },
                         1 => { // EBREAK
                             return error.Break;
@@ -627,7 +661,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                     0b101 => {
                         const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
                         const per = self.has_csr_permisions(csr_addr);
-                        const value: u64 = @as(u5, @bitCast(instr.i.rs1));
+                        const value: uarch = @as(u5, @bitCast(instr.i.rs1));
                         if (instr.i.rd != 0 and per.read()) {
                             self.g_regs[instr.i.rd] = self.csrs[csr_addr].read();
                         }
@@ -639,7 +673,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                     0b110 => {
                         const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
                         const per = self.has_csr_permisions(csr_addr);
-                        const value: u64 = @as(u5, @bitCast(instr.i.rs1));
+                        const value: uarch = @as(u5, @bitCast(instr.i.rs1));
                         if (instr.i.rd == 0 and per.read()) {
                             self.g_regs[instr.i.rd] = self.csrs[csr_addr].read();
                         }
@@ -651,7 +685,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                     0b111 => {
                         const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
                         const per = self.has_csr_permisions(csr_addr);
-                        const value: u64 = @as(u5, @bitCast(instr.i.rs1));
+                        const value: uarch = @as(u5, @bitCast(instr.i.rs1));
                         if (instr.i.rd == 0 and per.read()) {
                             self.g_regs[instr.i.rd] = self.csrs[csr_addr].read();
                         }
@@ -668,6 +702,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
             }
         };
 
+        eei: EEI,
         harts: [harts_len]Hart,
         allocator: Allocator,
         memory_maps: std.ArrayList(MemoryMap),
@@ -678,12 +713,13 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
             initial_csr: CSR,
         };
 
-        pub fn init(allocator: Allocator, csr_declarators: []const CSRDeclarator) CPU {
+        pub fn init(allocator: Allocator, csr_declarators: []const CSRDeclarator, eei: EEI) CPU {
             var cpu = CPU{
                 .allocator = allocator,
                 .harts = std.mem.zeroes([harts_len]Hart),
                 .memory_maps = std.ArrayList(MemoryMap).init(allocator),
                 .memory = std.ArrayList(u8).init(allocator),
+                .eei = eei,
             };
 
             for (&cpu.harts, 0..) |*hart, i| {
@@ -693,7 +729,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
 
                 hart.mode = .M;
 
-                _ = hart.csrs[CSRAddr.mhartid.to_u12()].write(i);
+                _ = hart.csrs[CSRAddr.mhartid.to_u12()].write(@truncate(i));
                 _ = hart.csrs[CSRAddr.mvendorid.to_u12()].write(2121);
                 _ = hart.csrs[CSRAddr.marchid.to_u12()].write(64);
             }
@@ -704,6 +740,10 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
         pub fn deinit(self: *CPU) void {
             self.memory_maps.deinit();
             self.memory.deinit();
+        }
+
+        pub fn get_memory_size(self: CPU) u64 {
+            return self.memory.items.len;
         }
 
         pub fn set_memory_size(self: *CPU, size: u64) !void {
@@ -733,7 +773,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
             try self.memory_maps.append(memory_map);
         }
 
-        pub fn vmemory_read(self: CPU, address: u64, buffer: []u8) !u64 {
+        pub fn vmemory_read(self: CPU, address: uarch, buffer: []u8) !u64 {
             var written: u64 = 0;
             for (0..buffer.len) |i| {
                 const offset = self.map_to_memory(address + i) catch break;
@@ -743,7 +783,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
             return written;
         }
 
-        pub fn vmemory_read_all(self: CPU, address: u64, buffer: []u8) !void {
+        pub fn vmemory_read_all(self: CPU, address: uarch, buffer: []u8) !void {
             for (0..buffer.len) |i| {
                 const offset = try self.map_to_memory(address + i);
                 buffer[i] = self.memory.items[offset];
