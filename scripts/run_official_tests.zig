@@ -32,6 +32,9 @@ pub fn main() !void {
     defer dir.close();
     var dir_iter = dir.iterate();
 
+    var failed: usize = 0;
+    var tests: usize = 0;
+
     while (try dir_iter.next()) |entry| {
         if (entry.kind != .file) {
             continue;
@@ -46,19 +49,31 @@ pub fn main() !void {
             }
         }
 
+        tests += 1;
+
         const program = try std.fs.path.join(alloc, &.{ cwd, "local", "share", "riscv-tests", "isa", entry.name });
         defer alloc.free(program);
 
         print("Test: {s}\n", .{entry.name});
-        utils.run(alloc, &.{ "timeout", "0.1s", test_runner_path, cpu_meta, program }) catch {
+
+        if (std.process.Child.run(.{ .allocator = alloc, .argv = &.{ "timeout", "0.1s", test_runner_path, cpu_meta, program } })) |result| {
+            switch (result.term) {
+                .Exited => |code| {
+                    if (code == 0) {
+                        continue;
+                    }
+                },
+                else => {},
+            }
             failed += 1;
-        };
+            print("Stdout: {s}\n", .{result.stdout});
+            print("Stderr: {s}\n", .{result.stderr});
+        } else |_| {}
     }
 
+    print("{d} tests runned!\n", .{tests});
     if (failed != 0) {
         print("{d} tests failed!\n", .{failed});
         std.process.exit(1);
     }
 }
-
-var failed: usize = 0;

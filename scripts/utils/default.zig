@@ -24,18 +24,11 @@ pub fn exists(name: []const u8) bool {
     }
 }
 
-pub var process_id: ?std.process.Child.Id = null;
-pub var process_lock = std.Thread.Mutex{};
-
 pub fn run(allocator: std.mem.Allocator, argv: []const []const u8) !void {
-    process_lock.lock();
-    defer process_lock.unlock();
     var process = std.process.Child.init(argv, allocator);
     process.stdin_behavior = .Inherit;
     process.stdout_behavior = .Inherit;
     process.stderr_behavior = .Inherit;
-    process_id = process.id;
-    defer process_id = null;
     const process_term = try process.spawnAndWait();
     switch (process_term) {
         .Exited => |code| {
