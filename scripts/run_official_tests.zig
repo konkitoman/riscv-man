@@ -69,20 +69,29 @@ pub fn main() !void {
             switch (result.term) {
                 .Exited => |code| {
                     if (code == 0) {
+                        print("\tPass\n", .{});
                         continue;
                     }
                 },
                 else => {},
             }
             failed += 1;
-            print("Stdout: {s}\n", .{result.stdout});
-            print("Stderr: {s}\n", .{result.stderr});
+            print("\tFail\n", .{});
+            if (!try std.process.hasEnvVar(alloc, "SIMPLE")) {
+                print("Stdout: {s}\n", .{result.stdout});
+                print("Stderr: {s}\n", .{result.stderr});
+            }
         } else |_| {}
     }
 
     print("{d} tests runned!\n", .{tests});
     if (failed != 0) {
+        const fails: f32 = @floatFromInt(failed);
+        const testss: f32 = @floatFromInt(tests);
+        print("Pass rate: {d:.2}%\n", .{((testss - fails) / testss) * 100.0});
+        print("Fail rate: {d:.2}%\n", .{(fails / testss) * 100.0});
         print("{d} tests failed!\n", .{failed});
         std.process.exit(1);
     }
+    print("All tests passed!!!\n", .{});
 }
