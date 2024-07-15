@@ -146,7 +146,9 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                             0b0000011 => try self.load(instr, cpu),
                             0b0100011 => try self.save(instr, cpu),
                             0b0010011 => self.op_imm(instr),
+                            0b0011011 => self.op_imm_32(instr),
                             0b0110011 => self.op(instr),
+                            0b0111011 => self.op_32(instr),
                             0b0001111 => self.misc_mem(instr),
                             0b1110011 => try self.system(instr, cpu),
                             else => {
@@ -292,13 +294,13 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                 const u = instr.u;
                 if (u.rd != 0) {
                     self.g_regs[u.rd] = 0;
-                    self.g_regs[u.rd] = @as(uarch, u.imm_31_12) << 12;
+                    self.g_regs[u.rd] = @bitCast(@as(iarch, @as(i32, @bitCast((@as(u32, u.imm_31_12) << 12)))));
                 }
                 self.pc += 4;
             }
 
             fn auipc(self: *@This(), instr: ImmediateVariant) void {
-                const offset = @as(uarch, instr.u.imm_31_12) << 12;
+                const offset: uarch = @bitCast(@as(iarch, @as(i32, @bitCast(@as(u32, instr.u.imm_31_12) << 12))));
                 if (instr.u.rd != 0) {
                     self.g_regs[instr.u.rd] = self.pc +% offset;
                 }
@@ -306,18 +308,20 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
             }
 
             fn jal(self: *@This(), instr: ImmediateVariant) void {
-                if (instr.u.rd != 0) {
-                    self.g_regs[instr.u.rd] = self.pc + 4;
-                }
+                const pc = self.pc + 4;
                 self.pc = @as(uarch, @bitCast(@as(iarch, @bitCast(self.pc)) + (@as(iarch, instr.j.get_imm()) * 2)));
+                if (instr.u.rd != 0) {
+                    self.g_regs[instr.u.rd] = pc;
+                }
             }
 
             fn jalr(self: *@This(), instr: ImmediateVariant) void {
-                if (instr.i.rd != 0) {
-                    self.g_regs[instr.i.rd] = self.pc + 4;
-                }
+                const pc = self.pc + 4;
                 self.pc = @as(uarch, @bitCast(@as(iarch, @bitCast(self.g_regs[instr.i.rs1])) + (@as(iarch, @as(i12, @bitCast(instr.i.imm_11_0))))));
                 self.pc ^= self.pc & 1;
+                if (instr.i.rd != 0) {
+                    self.g_regs[instr.i.rd] = pc;
+                }
             }
 
             fn branch(self: *@This(), instr: ImmediateVariant) void {
@@ -342,7 +346,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                         }
                     },
                     0b101 => { // BGE
-                        if (@as(iarch, @bitCast(self.g_regs[instr.b.rs1])) > @as(uarch, @bitCast(self.g_regs[instr.b.rs2]))) {
+                        if (@as(iarch, @bitCast(self.g_regs[instr.b.rs1])) >= @as(iarch, @bitCast(self.g_regs[instr.b.rs2]))) {
                             self.pc = @as(uarch, @bitCast(@as(iarch, @bitCast(self.pc)) + offset));
                             return;
                         }
@@ -354,7 +358,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                         }
                     },
                     0b111 => { // BGEU
-                        if (self.g_regs[instr.b.rs1] > self.g_regs[instr.b.rs2]) {
+                        if (self.g_regs[instr.b.rs1] >= self.g_regs[instr.b.rs2]) {
                             self.pc = @as(uarch, @bitCast(@as(iarch, @bitCast(self.pc)) + offset));
                             return;
                         }
@@ -384,6 +388,25 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                         try cpu.vmemory_read_all(offset, &buffer);
                         self.g_regs[instr.i.rd] = @bitCast(@as(iarch, std.mem.readInt(i32, &buffer, .little)));
                     },
+                    0b100 => { // LBU
+                        var buffer: [1]u8 = undefined;
+                        try cpu.vmemory_read_all(offset, &buffer);
+                        self.g_regs[instr.i.rd] = std.mem.readInt(u8, &buffer, .little);
+                    },
+                    0b101 => { // LHU
+                        var buffer: [2]u8 = undefined;
+                        try cpu.vmemory_read_all(offset, &buffer);
+                        self.g_regs[instr.i.rd] = std.mem.readInt(u16, &buffer, .little);
+                    },
+                    0b110 => { // LWU
+                        if (uarch == u64) {
+                            var buffer: [4]u8 = undefined;
+                            try cpu.vmemory_read_all(offset, &buffer);
+                            self.g_regs[instr.i.rd] = std.mem.readInt(u32, &buffer, .little);
+                        } else {
+                            print("LD is not implemented for x32 CPU!\n", .{});
+                        }
+                    },
                     0b011 => { // LD
                         if (uarch == u64) {
                             var buffer: [8]u8 = undefined;
@@ -392,16 +415,6 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                         } else {
                             print("LD is not implemented for x32 CPU!\n", .{});
                         }
-                    },
-                    0b100 => { // LBU
-                        var buffer: [1]u8 = undefined;
-                        try cpu.vmemory_read_all(offset, &buffer);
-                        self.g_regs[instr.i.rd] = @bitCast(@as(uarch, std.mem.readInt(u8, &buffer, .little)));
-                    },
-                    0b101 => { // LHU
-                        var buffer: [2]u8 = undefined;
-                        try cpu.vmemory_read_all(offset, &buffer);
-                        self.g_regs[instr.i.rd] = @bitCast(@as(uarch, std.mem.readInt(u16, &buffer, .little)));
                     },
                     else => {
                         print("Invalid LOAD func3: {b:0>3}\n", .{instr.b.funct3});
@@ -453,7 +466,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                     },
                     0b011 => { // SLTIU
                         if (i.rd != 0) {
-                            self.g_regs[i.rd] = if (self.g_regs[i.rs1] == 0) 1 else if (self.g_regs[i.rs1] < @as(uarch, @bitCast(@as(iarch, i.imm_11_0)))) 1 else 0;
+                            self.g_regs[i.rd] = if (i.rs1 == 0) 1 else if (self.g_regs[i.rs1] < @as(uarch, @bitCast(@as(iarch, i.imm_11_0)))) 1 else 0;
                         }
                     },
                     0b100 => { // XORI
@@ -505,6 +518,48 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                 self.pc += 4;
             }
 
+            fn op_imm_32(self: *@This(), instr: ImmediateVariant) void {
+                self.pc += 4;
+                if (uarch == u32) {
+                    print("OP-IMM-32 not implemented for x32\n", .{});
+                    return;
+                }
+                const i = instr.i;
+                switch (i.funct3) {
+                    0b000 => { // ADDIW
+                        if (i.rd != 0) {
+                            self.g_regs[i.rd] = @bitCast(@as(i64, @as(i32, @truncate(@as(iarch, @bitCast(self.g_regs[i.rs1])))) +% @as(i32, i.imm_11_0)));
+                        }
+                    },
+                    0b001 => { // SLLIW
+                        if (i.rd != 0) {
+                            self.g_regs[i.rd] = @as(u64, @bitCast(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(self.g_regs[i.rs1])) << @truncate(instr.i_1.shamt))))));
+                        }
+                    },
+                    0b101 => { // SRLIW/SRAIW
+                        switch (instr.i_1.op) {
+                            0b000000 => { // SRLIW
+                                if (i.rd != 0) {
+                                    self.g_regs[i.rd] = @as(u64, @bitCast(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(self.g_regs[i.rs1])) >> @truncate(instr.i_1.shamt))))));
+                                }
+                            },
+                            0b010000 => { // SRAIW
+                                if (i.rd != 0) {
+                                    const mask = (@as(u32, std.math.maxInt(u32)) >> @truncate(instr.i_1.shamt)) ^ @as(u32, std.math.maxInt(u32));
+                                    self.g_regs[i.rd] = @bitCast(@as(i64, @as(i32, @bitCast((@as(u32, @truncate(self.g_regs[i.rs1])) >> @truncate(instr.i_1.shamt)) | (mask & if (self.g_regs[i.rs1] & 1 << (31) == 1 << (31)) @as(u32, std.math.maxInt(u32)) else 0)))));
+                                }
+                            },
+                            else => {
+                                print("Special I, not implemented: {b:0>6}\n", .{instr.i_1.op});
+                            },
+                        }
+                    },
+                    else => {
+                        print("OP-IMM-32 func3 not implemented: {b:0>3}\n", .{i.funct3});
+                    },
+                }
+            }
+
             fn op(self: *@This(), instr: ImmediateVariant) void {
                 const r = instr.r;
                 switch (r.funct3) {
@@ -537,7 +592,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                     },
                     0b011 => { // SLTU
                         if (r.rd != 0) {
-                            self.g_regs[r.rd] = if (self.g_regs[r.rs1] == 0) 1 else if (self.g_regs[r.rs1] < self.g_regs[r.rs2]) 1 else 0;
+                            self.g_regs[r.rd] = if (r.rs1 == 0 and r.rs2 != 0) 1 else if (self.g_regs[r.rs1] < self.g_regs[r.rs2]) 1 else 0;
                         }
                     },
                     0b100 => { // XOR
@@ -575,6 +630,61 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                     },
                 }
                 self.pc += 4;
+            }
+
+            fn op_32(self: *@This(), instr: ImmediateVariant) void {
+                self.pc += 4;
+                if (uarch == u32) {
+                    print("OP-32 not implemented for x32\n", .{});
+                    return;
+                }
+
+                const r = instr.r;
+                switch (r.funct3) {
+                    0b000 => { // ADDW/SUBW
+                        switch (r.funct7) {
+                            0b0000000 => { // ADDW
+                                if (r.rd != 0) {
+                                    self.g_regs[r.rd] = @bitCast(@as(i64, @as(i32, @truncate(@as(i64, @bitCast(self.g_regs[r.rs1])))) +% @as(i32, @truncate(@as(i64, @bitCast(self.g_regs[r.rs2]))))));
+                                }
+                            },
+                            0b0100000 => { // SUBW
+                                if (r.rd != 0) {
+                                    self.g_regs[r.rd] = @bitCast(@as(i64, @as(i32, @truncate(@as(i64, @bitCast(self.g_regs[r.rs1])))) -% @as(i32, @truncate(@as(i64, @bitCast(self.g_regs[r.rs2]))))));
+                                }
+                            },
+                            else => {
+                                print("Invalid funct7 for ADD or SUB {b:0>7}\n", .{r.funct7});
+                            },
+                        }
+                    },
+                    0b001 => { // SLLW
+                        if (r.rd != 0) {
+                            self.g_regs[r.rd] = @bitCast(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(self.g_regs[r.rs1])) << @truncate(self.g_regs[r.rs2])))));
+                        }
+                    },
+                    0b101 => { // SRLW/SRAW
+                        switch (r.funct7) {
+                            0b0000000 => { // SRLW
+                                if (r.rd != 0) {
+                                    self.g_regs[r.rd] = @bitCast(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(self.g_regs[r.rs1])) >> @truncate(self.g_regs[r.rs2])))));
+                                }
+                            },
+                            0b0100000 => { // SRAW
+                                if (r.rd != 0) {
+                                    const mask = (@as(u32, std.math.maxInt(u32)) >> @truncate(self.g_regs[r.rs2])) ^ @as(u32, std.math.maxInt(u32));
+                                    self.g_regs[r.rd] = @bitCast(@as(i64, @as(i32, @bitCast((@as(u32, @truncate(self.g_regs[r.rs1])) >> @truncate(self.g_regs[r.rs2])) | (mask & if (self.g_regs[r.rs1] & 1 << 31 == 1 << 31) @as(u32, std.math.maxInt(u32)) else 0)))));
+                                }
+                            },
+                            else => {
+                                print("Invalid funct7 for SRL or SRA {b:0>7}\n", .{r.funct7});
+                            },
+                        }
+                    },
+                    else => {
+                        print("Invalid func3 for OP-32 {b:0>3}\n", .{r.funct3});
+                    },
+                }
             }
 
             fn misc_mem(self: *@This(), instr: ImmediateVariant) void {

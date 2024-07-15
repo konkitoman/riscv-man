@@ -17,6 +17,11 @@ pub fn main() !void {
         return;
     };
 
+    const filter = if (args.next()) |bin| bin else {
+        print("filter is required!\n", .{});
+        return;
+    };
+
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
@@ -47,6 +52,10 @@ pub fn main() !void {
             if (std.mem.startsWith(u8, entry.name, "rv64")) {
                 continue;
             }
+        }
+
+        if (filter.len != 0 and !std.mem.startsWith(u8, entry.name, filter)) {
+            continue;
         }
 
         tests += 1;

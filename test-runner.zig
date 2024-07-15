@@ -85,7 +85,25 @@ pub fn main() !void {
                 return;
             };
 
-            while (cpu.step()) {} else |err| {
+            var memory: [8]u8 = undefined;
+            const ASM = @import("src/riscv-asm.zig");
+            var instr: ASM.Instr = undefined;
+            while (d: {
+                _ = try cpu.vmemory_read(cpu.harts[0].pc, &memory);
+                instr = try ASM.Instr.from_memory(&memory);
+                print("0x{x} ", .{cpu.harts[0].pc});
+                try instr.write(std.io.getStdErr().writer().any());
+                for (instr.used_grs()) |reg| {
+                    if (reg.to_u5() == 0) continue;
+                    print("\tOld Reg: {s} = 0x{x}\n", .{ riscv.GeneralRegsNames[reg.to_u5()], cpu.harts[0].g_regs[reg.to_u5()] });
+                }
+                break :d cpu.step();
+            }) {
+                for (instr.used_grs()) |reg| {
+                    if (reg.to_u5() == 0) continue;
+                    print("\tNew Reg: {s} = 0x{x}\n", .{ riscv.GeneralRegsNames[reg.to_u5()], cpu.harts[0].g_regs[reg.to_u5()] });
+                }
+            } else |err| {
                 print("Exited with: {}\n", .{err});
             }
         },

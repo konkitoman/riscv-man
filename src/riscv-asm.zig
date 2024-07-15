@@ -62,8 +62,19 @@ pub const Instr = union(enum) {
 
     LWU: struct { rd: GR, rs1: GR, offset: i12 },
     LD: struct { rd: GR, rs1: GR, offset: i12 },
-
     SD: struct { rs1: GR, rs2: GR, offset: i12 },
+    // SLLI from RV32I
+    // SRLI from RV32I
+    // SRAI from RV32I
+    ADDIW: struct { rd: GR, rs1: GR, imm: i12 },
+    SLLIW: struct { rd: GR, rs1: GR, shamt: u6 },
+    SRLIW: struct { rd: GR, rs1: GR, shamt: u6 },
+    SRAIW: struct { rd: GR, rs1: GR, shamt: u6 },
+    ADDW: struct { rd: GR, rs1: GR, rs2: GR },
+    SUBW: struct { rd: GR, rs1: GR, rs2: GR },
+    SLLW: struct { rd: GR, rs1: GR, rs2: GR },
+    SRLW: struct { rd: GR, rs1: GR, rs2: GR },
+    SRAW: struct { rd: GR, rs1: GR, rs2: GR },
 
     // # Ziscr
 
@@ -128,6 +139,15 @@ pub const Instr = union(enum) {
             .LWU => |i| (base.ImmediateVariantX32{ .i = .{ .imm_11_0 = i.offset, .rs1 = i.rs1.to_u5(), .funct3 = 0b110, .rd = i.rd.to_u5(), .opcode = 0b0000011 } }).to_varinstr(),
             .LD => |i| (base.ImmediateVariantX32{ .i = .{ .imm_11_0 = i.offset, .rs1 = i.rs1.to_u5(), .funct3 = 0b011, .rd = i.rd.to_u5(), .opcode = 0b0000011 } }).to_varinstr(),
             .SD => |i| (base.ImmediateVariantX32{ .s = .{ .imm_11_5 = @truncate(cast(u12, i.offset) >> 5), .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b011, .imm_4_0 = @truncate(cast(u12, i.offset)), .opcode = 0b0100011 } }).to_varinstr(),
+            .ADDIW => |i| (base.ImmediateVariantX32{ .i = .{ .imm_11_0 = i.imm, .rs1 = i.rs1.to_u5(), .funct3 = 0b000, .rd = i.rd.to_u5(), .opcode = 0b0011011 } }).to_varinstr(),
+            .SLLIW => |i| (base.ImmediateVariantX32{ .i_1 = .{ .op = 0b000000, .shamt = i.shamt, .rs1 = i.rs1.to_u5(), .funct3 = 0b001, .rd = i.rd.to_u5(), .opcode = 0b0011011 } }).to_varinstr(),
+            .SRLIW => |i| (base.ImmediateVariantX32{ .i_1 = .{ .op = 0b000000, .shamt = i.shamt, .rs1 = i.rs1.to_u5(), .funct3 = 0b101, .rd = i.rd.to_u5(), .opcode = 0b0011011 } }).to_varinstr(),
+            .SRAIW => |i| (base.ImmediateVariantX32{ .i_1 = .{ .op = 0b010000, .shamt = i.shamt, .rs1 = i.rs1.to_u5(), .funct3 = 0b101, .rd = i.rd.to_u5(), .opcode = 0b0011011 } }).to_varinstr(),
+            .ADDW => |i| (base.ImmediateVariantX32{ .r = .{ .funct7 = 0b0000000, .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b000, .rd = i.rd.to_u5(), .opcode = 0b0111011 } }).to_varinstr(),
+            .SUBW => |i| (base.ImmediateVariantX32{ .r = .{ .funct7 = 0b0100000, .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b000, .rd = i.rd.to_u5(), .opcode = 0b0111011 } }).to_varinstr(),
+            .SLLW => |i| (base.ImmediateVariantX32{ .r = .{ .funct7 = 0b0000000, .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b001, .rd = i.rd.to_u5(), .opcode = 0b0111011 } }).to_varinstr(),
+            .SRLW => |i| (base.ImmediateVariantX32{ .r = .{ .funct7 = 0b0000000, .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b101, .rd = i.rd.to_u5(), .opcode = 0b0111011 } }).to_varinstr(),
+            .SRAW => |i| (base.ImmediateVariantX32{ .r = .{ .funct7 = 0b0100000, .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b101, .rd = i.rd.to_u5(), .opcode = 0b0111011 } }).to_varinstr(),
 
             // w Ziscr
             .CSRRW => |i| (base.ImmediateVariantX32{ .i = .{ .imm_11_0 = @bitCast(i.csr), .rs1 = i.rs1.to_u5(), .funct3 = 0b001, .rd = i.rd.to_u5(), .opcode = 0b1110011 } }).to_varinstr(),
@@ -203,6 +223,16 @@ pub const Instr = union(enum) {
                             else => .{ .UNKNOWN_X32 = x32 },
                         },
                     },
+                    0b0011011 => switch (i.i.funct3) {
+                        0b000 => .{ .ADDIW = .{ .rd = GRf(i.i.rd), .rs1 = GRf(i.i.rs1), .imm = i.i.imm_11_0 } },
+                        0b001 => .{ .SLLIW = .{ .rd = GRf(i.i_1.rd), .rs1 = GRf(i.i_1.rs1), .shamt = i.i_1.shamt } },
+                        0b101 => switch (i.i_1.op) {
+                            0 => .{ .SRLIW = .{ .rd = GRf(i.i_1.rd), .rs1 = GRf(i.i_1.rs1), .shamt = i.i_1.shamt } },
+                            1 << 4 => .{ .SRAIW = .{ .rd = GRf(i.i_1.rd), .rs1 = GRf(i.i_1.rs1), .shamt = i.i_1.shamt } },
+                            else => .{ .UNKNOWN_X32 = x32 },
+                        },
+                        else => .{ .UNKNOWN_X32 = x32 },
+                    },
                     0b0110011 => switch (i.r.funct3) {
                         0b000 => switch (i.r.funct7) {
                             0 => .{ .ADD = .{ .rd = GRf(i.r.rd), .rs1 = GRf(i.r.rs1), .rs2 = GRf(i.r.rs2) } },
@@ -220,6 +250,20 @@ pub const Instr = union(enum) {
                         },
                         0b110 => .{ .OR = .{ .rd = GRf(i.r.rd), .rs1 = GRf(i.r.rs1), .rs2 = GRf(i.r.rs2) } },
                         0b111 => .{ .AND = .{ .rd = GRf(i.r.rd), .rs1 = GRf(i.r.rs1), .rs2 = GRf(i.r.rs2) } },
+                    },
+                    0b0111011 => switch (i.r.funct3) {
+                        0b000 => switch (i.r.funct7) {
+                            0 => .{ .ADDW = .{ .rd = GRf(i.r.rd), .rs1 = GRf(i.r.rs1), .rs2 = GRf(i.r.rs2) } },
+                            1 << 5 => .{ .SUBW = .{ .rd = GRf(i.r.rd), .rs1 = GRf(i.r.rs1), .rs2 = GRf(i.r.rs2) } },
+                            else => .{ .UNKNOWN_X32 = x32 },
+                        },
+                        0b001 => .{ .SLLW = .{ .rd = GRf(i.r.rd), .rs1 = GRf(i.r.rs1), .rs2 = GRf(i.r.rs2) } },
+                        0b101 => switch (i.r.funct7) {
+                            0 => .{ .SRLW = .{ .rd = GRf(i.r.rd), .rs1 = GRf(i.r.rs1), .rs2 = GRf(i.r.rs2) } },
+                            1 << 5 => .{ .SRAW = .{ .rd = GRf(i.r.rd), .rs1 = GRf(i.r.rs1), .rs2 = GRf(i.r.rs2) } },
+                            else => .{ .UNKNOWN_X32 = x32 },
+                        },
+                        else => .{ .UNKNOWN_X32 = x32 },
                     },
                     0b0001111 => switch (i.f.func3) {
                         0b000 => .{ .FENCE = .{ .rd = GRf(i.f.rd), .rs1 = GRf(i.f.rs1), .succ = i.f.succ, .pred = i.f.pred, .fm = i.f.fm } },
@@ -295,6 +339,15 @@ pub const Instr = union(enum) {
             .LWU,
             .LD,
             .SD,
+            .ADDIW,
+            .SLLIW,
+            .SRLIW,
+            .SRAIW,
+            .ADDW,
+            .SUBW,
+            .SLLW,
+            .SRLW,
+            .SRAW,
             // Zicsr
             .CSRRW,
             .CSRRS,
@@ -355,6 +408,15 @@ pub const Instr = union(enum) {
             .LWU => |i| writer.print("LWU {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), @as(u12, @bitCast(i.offset)) }),
             .LD => |i| writer.print("LD {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), @as(u12, @bitCast(i.offset)) }),
             .SD => |i| writer.print("SD {s}, {s}, 0x{x}\n", .{ i.rs1.name(), i.rs2.name(), @as(u12, @bitCast(i.offset)) }),
+            .ADDIW => |i| writer.print("ADDIW {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), i.imm }),
+            .SLLIW => |i| writer.print("SLLIW {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), i.shamt }),
+            .SRLIW => |i| writer.print("SRLIW {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), i.shamt }),
+            .SRAIW => |i| writer.print("SRAIW {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), i.shamt }),
+            .ADDW => |i| writer.print("ADDW {s}, {s}, {s}\n", .{ i.rd.name(), i.rs1.name(), i.rs2.name() }),
+            .SUBW => |i| writer.print("SUBW {s}, {s}, {s}\n", .{ i.rd.name(), i.rs1.name(), i.rs2.name() }),
+            .SLLW => |i| writer.print("SLLW {s}, {s}, {s}\n", .{ i.rd.name(), i.rs1.name(), i.rs2.name() }),
+            .SRLW => |i| writer.print("SRL {s}, {s}, {s}\n", .{ i.rd.name(), i.rs1.name(), i.rs2.name() }),
+            .SRAW => |i| writer.print("SRA {s}, {s}, {s}\n", .{ i.rd.name(), i.rs1.name(), i.rs2.name() }),
 
             // f Zicsr
             .CSRRW => |i| writer.print("CSRRW {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), i.csr }),
@@ -367,6 +429,80 @@ pub const Instr = union(enum) {
             .UNKNOWN_X16 => |data| writer.print("DB 0x{x}\n", .{data}),
             .UNKNOWN_X32 => |data| writer.print("DB 0x{x}\n", .{data}),
             .UNKNOWN_X64 => |data| writer.print("DB 0x{x}\n", .{data}),
+        };
+    }
+
+    pub fn used_grs(self: Self) [3]GR {
+        return switch (self) {
+            // RV32I
+            .LUI => |i| .{ i.rd, GR.ZERO, GR.ZERO },
+            .AUIPC => |i| .{ i.rd, GR.ZERO, GR.ZERO },
+            .JAL => |i| .{ i.rd, GR.ZERO, GR.ZERO },
+            .JALR => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .BEQ => |i| .{ i.rs1, i.rs2, GR.ZERO },
+            .BNE => |i| .{ i.rs1, i.rs2, GR.ZERO },
+            .BLT => |i| .{ i.rs1, i.rs2, GR.ZERO },
+            .BGE => |i| .{ i.rs1, i.rs2, GR.ZERO },
+            .BLTU => |i| .{ i.rs1, i.rs2, GR.ZERO },
+            .BGEU => |i| .{ i.rs1, i.rs2, GR.ZERO },
+            .LB => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .LH => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .LW => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .LBU => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .LHU => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .SB => |i| .{ i.rs1, i.rs2, GR.ZERO },
+            .SH => |i| .{ i.rs1, i.rs2, GR.ZERO },
+            .SW => |i| .{ i.rs1, i.rs2, GR.ZERO },
+            .ADDI => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .SLTI => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .SLTIU => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .XORI => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .ORI => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .ANDI => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .SLLI => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .SRLI => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .SRAI => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .ADD => |i| .{ i.rd, i.rs1, i.rs2 },
+            .SUB => |i| .{ i.rd, i.rs1, i.rs2 },
+            .SLL => |i| .{ i.rd, i.rs1, i.rs2 },
+            .SLT => |i| .{ i.rd, i.rs1, i.rs2 },
+            .SLTU => |i| .{ i.rd, i.rs1, i.rs2 },
+            .XOR => |i| .{ i.rd, i.rs1, i.rs2 },
+            .SRL => |i| .{ i.rd, i.rs1, i.rs2 },
+            .SRA => |i| .{ i.rd, i.rs1, i.rs2 },
+            .OR => |i| .{ i.rd, i.rs1, i.rs2 },
+            .AND => |i| .{ i.rd, i.rs1, i.rs2 },
+            .FENCE => |_| .{ GR.ZERO, GR.ZERO, GR.ZERO },
+            .ECALL => .{ GR.ZERO, GR.ZERO, GR.ZERO },
+            .EBREAK => .{ GR.ZERO, GR.ZERO, GR.ZERO },
+
+            // RV64I
+
+            .LWU => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .LD => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .SD => |i| .{ i.rs1, i.rs2, GR.ZERO },
+            .ADDIW => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .SLLIW => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .SRLIW => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .SRAIW => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .ADDW => |i| .{ i.rd, i.rs1, i.rs2 },
+            .SUBW => |i| .{ i.rd, i.rs1, i.rs2 },
+            .SLLW => |i| .{ i.rd, i.rs1, i.rs2 },
+            .SRLW => |i| .{ i.rd, i.rs1, i.rs2 },
+            .SRAW => |i| .{ i.rd, i.rs1, i.rs2 },
+
+            // Ziscr
+
+            .CSRRW => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .CSRRS => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .CSRRC => |i| .{ i.rd, i.rs1, GR.ZERO },
+            .CSRRWI => |i| .{ i.rd, GR.ZERO, GR.ZERO },
+            .CSRRSI => |i| .{ i.rd, GR.ZERO, GR.ZERO },
+            .CSRRCI => |i| .{ i.rd, GR.ZERO, GR.ZERO },
+
+            .UNKNOWN_X16 => |_| .{ GR.ZERO, GR.ZERO, GR.ZERO },
+            .UNKNOWN_X32 => |_| .{ GR.ZERO, GR.ZERO, GR.ZERO },
+            .UNKNOWN_X64 => |_| .{ GR.ZERO, GR.ZERO, GR.ZERO },
         };
     }
 
