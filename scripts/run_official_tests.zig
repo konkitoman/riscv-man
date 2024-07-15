@@ -76,7 +76,7 @@ pub fn main() !void {
                 else => {},
             }
             failed += 1;
-            print("\tFail\n", .{});
+            print("\t!!!Fail!!!\n", .{});
             if (!try std.process.hasEnvVar(alloc, "SIMPLE")) {
                 print("Stdout: {s}\n", .{result.stdout});
                 print("Stderr: {s}\n", .{result.stderr});
