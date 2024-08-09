@@ -404,14 +404,14 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                             try cpu.vmemory_read_all(offset, &buffer);
                             self.g_regs[instr.i.rd] = std.mem.readInt(u32, &buffer, .little);
                         } else {
-                            print("LD is not implemented for x32 CPU!\n", .{});
+                            print("LWD is not implemented for x32 CPU!\n", .{});
                         }
                     },
                     0b011 => { // LD
                         if (uarch == u64) {
                             var buffer: [8]u8 = undefined;
                             try cpu.vmemory_read_all(offset, &buffer);
-                            self.g_regs[instr.i.rd] = @bitCast(std.mem.readInt(iarch, &buffer, .little));
+                            self.g_regs[instr.i.rd] = @bitCast(std.mem.readInt(i64, &buffer, .little));
                         } else {
                             print("LD is not implemented for x32 CPU!\n", .{});
                         }

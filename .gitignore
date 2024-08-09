@@ -1,6 +1,6 @@
 /.zig-cache
 /zig-out
-/riscv-gnu-toolchain
-/official-riscv-tests
-/local
-
+riscv-gnu-toolchain
+official-riscv-tests
+local
+xv6
