@@ -32,7 +32,7 @@ pub fn main() !void {
     try utils.run(alloc, &.{ "zig", "build" });
 
     const cwd = try std.fs.cwd().realpathAlloc(alloc, ".");
-    const test_runner_path = try std.fs.cwd().realpathAlloc(alloc, "zig-out/bin/riscv-man-test-runner");
+    const test_runner_path = try std.fs.cwd().realpathAlloc(alloc, "zig-out/bin/rvman-test-runner");
     var dir = try std.fs.cwd().openDir(try std.fs.path.join(alloc, &.{ "local", "share", "riscv-tests", "isa" }), .{ .iterate = true });
     defer dir.close();
     var dir_iter = dir.iterate();

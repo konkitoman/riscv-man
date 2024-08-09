@@ -30,15 +30,15 @@ pub fn build(b: *std.Build) void {
     // b.installArtifact(lib);
 
     const exe = b.addExecutable(.{
-        .name = "riscv-man",
+        .name = "rvman-run",
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
 
     const exe_test_runner = b.addExecutable(.{
-        .name = "riscv-man-test-runner",
-        .root_source_file = b.path("test-runner.zig"),
+        .name = "rvman-test-runner",
+        .root_source_file = b.path("src/test-runner.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -53,20 +53,20 @@ pub fn build(b: *std.Build) void {
     // step is evaluated that depends on it. The next line below will establish
     // such a dependency.
     const run_cmd = b.addRunArtifact(exe);
-    const run_cmd_test_runnner = b.addRunArtifact(exe_test_runner);
+    const run_cmd_test_runner = b.addRunArtifact(exe_test_runner);
 
     // By making the run step depend on the install step, it will be run from the
     // installation directory rather than directly from within the cache directory.
     // This is not necessary, however, if the application depends on other installed
     // files, this ensures they will be present and in the expected location.
     run_cmd.step.dependOn(b.getInstallStep());
-    run_cmd.step.dependOn(b.getInstallStep());
+    run_cmd_test_runner.step.dependOn(b.getInstallStep());
 
     // This allows the user to pass arguments to the application in the build
     // command itself, like this: `zig build run -- arg1 arg2 etc`
     if (b.args) |args| {
         run_cmd.addArgs(args);
-        run_cmd_test_runnner.addArgs(args);
+        run_cmd_test_runner.addArgs(args);
     }
 
     // This creates a build step. It will be visible in the `zig build --help` menu,
@@ -76,5 +76,5 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     const test_runner = b.step("test-runner", "Run a test program");
-    test_runner.dependOn(&run_cmd_test_runnner.step);
+    test_runner.dependOn(&run_cmd_test_runner.step);
 }

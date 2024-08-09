@@ -1,6 +1,6 @@
 const std = @import("std");
-const riscv = @import("src/riscv.zig");
-const elf = @import("src/elf.zig");
+const riscv = @import("riscv/cpu.zig");
+const elf = @import("elf.zig");
 
 const print = std.debug.print;
 
@@ -86,7 +86,7 @@ pub fn main() !void {
             };
 
             var memory: [8]u8 = undefined;
-            const ASM = @import("src/riscv-asm.zig");
+            const ASM = @import("riscv/asm.zig");
             var instr: ASM.Instr = undefined;
             while (d: {
                 _ = try cpu.vmemory_read(cpu.harts[0].pc, &memory);

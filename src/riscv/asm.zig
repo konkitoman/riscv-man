@@ -1,6 +1,6 @@
 const std = @import("std");
 const log = std.log;
-const base = @import("riscv-base.zig");
+const base = @import("base.zig");
 
 const GR = base.GeneralReg;
 const GRf = GR.from_u5;

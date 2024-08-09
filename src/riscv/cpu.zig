@@ -1,6 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const base = @import("riscv-base.zig");
+const base = @import("base.zig");
 pub const GeneralRegsNames = base.GeneralRegsNames;
 pub const GeneralReg = base.GeneralReg;
 pub const VarInstr = base.VarInstr;

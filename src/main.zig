@@ -1,8 +1,8 @@
 const std = @import("std");
 const print = std.debug.print;
 
-const riscv = @import("riscv.zig");
-const ASM = @import("riscv-asm.zig");
+const riscv = @import("riscv/cpu.zig");
+const ASM = @import("riscv/asm.zig");
 
 const CPU = riscv.buildCPU(u64, 1);
 
