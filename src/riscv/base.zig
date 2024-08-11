@@ -1,7 +1,7 @@
 const std = @import("std");
 
-pub const GeneralRegsNames = [_][]const u8{ "zero", "ra", "sp", "gp", "tp", "t0", "t1", "t2", "fp", "s1", "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6" };
-pub const GeneralReg = enum(u5) {
+pub const IntRegNames = [_][]const u8{ "zero", "ra", "sp", "gp", "tp", "t0", "t1", "t2", "fp", "s1", "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6" };
+pub const IntReg = enum(u5) {
     ZERO,
     RA,
     SP,
@@ -44,7 +44,65 @@ pub const GeneralReg = enum(u5) {
     }
 
     pub fn name(self: @This()) []const u8 {
-        return GeneralRegsNames[self.to_u5()];
+        return IntRegNames[self.to_u5()];
+    }
+
+    pub fn to_popular(self: @This()) ?PopularIntReg {
+        const i = self.to_u5();
+        if (i <= 8 or i >= 15) {
+            return null;
+        }
+
+        return PopularIntReg.from_u3(@truncate(i - 8));
+    }
+};
+
+pub const PopularIntReg = enum(u3) {
+    S0,
+    S1,
+    A0,
+    A1,
+    A2,
+    A3,
+    A4,
+    A5,
+
+    pub fn to_u3(self: @This()) u3 {
+        return @intFromEnum(self);
+    }
+
+    pub fn from_u3(operand: u3) @This() {
+        return @enumFromInt(operand);
+    }
+
+    pub fn to_reg(self: @This()) IntReg {
+        return IntReg.from_u5(@as(u5, self.to_u3()) + 8);
+    }
+
+    pub fn name(self: @This()) []const u8 {
+        return IntRegNames[self.to_reg().to_u5()];
+    }
+};
+
+pub const Arch = enum {
+    X32,
+    X64,
+    X128,
+
+    pub fn uarch(self: @This()) type {
+        return switch (self) {
+            .X32 => u32,
+            .X64 => u64,
+            .X128 => u128,
+        };
+    }
+
+    pub fn iarch(self: @This()) type {
+        return switch (self) {
+            .X32 => i32,
+            .X64 => i64,
+            .X128 => i128,
+        };
     }
 };
 
@@ -551,13 +609,27 @@ pub const VarInstr = union(enum) {
     pub fn X64(data: u64) Self {
         return .{ .x64 = data };
     }
+
+    pub fn debug(self: Self) void {
+        switch (self) {
+            .x16 => |x| {
+                std.debug.print("X16 Instr: {b:0>16}\n", .{x});
+            },
+            .x32 => |x| {
+                std.debug.print("X32 Instr: {b:0>32}\n", .{x});
+            },
+            .x64 => |x| {
+                std.debug.print("X64 Instr: {b:0>64}\n", .{x});
+            },
+        }
+    }
 };
 
 pub const FFlags = packed struct {
-    write: bool,
-    read: bool,
-    out: bool,
-    input: bool,
+    write: bool = false,
+    read: bool = false,
+    out: bool = false,
+    input: bool = false,
 
     pub fn from_u4(value: u4) @This() {
         return @bitCast(value);
@@ -589,7 +661,7 @@ pub const FFlags = packed struct {
     }
 };
 
-pub const ImmediateVariantX32 = packed union {
+pub const InstrFormatX32 = packed union {
     pub const R = packed struct { opcode: u7, rd: u5, funct3: u3, rs1: u5, rs2: u5, funct7: u7 };
     pub const I = packed struct { opcode: u7, rd: u5, funct3: u3, rs1: u5, imm_11_0: i12 };
     pub const I_1 = packed struct { opcode: u7, rd: u5, funct3: u3, rs1: u5, shamt: u6, op: u6 };
@@ -656,5 +728,112 @@ pub const ImmediateVariantX32 = packed union {
 
     pub fn to_varinstr(self: Self) VarInstr {
         return .{ .x32 = self.to_u32() };
+    }
+};
+
+pub const InstrFormatX16 = packed union {
+    pub const CR = packed struct { op: u2, rs2: u5, rd: u5, funct4: u4 };
+    pub const CI = packed struct { op: u2, imm_2_6: u5, rd: u5, imm_12: u1, funct3: u3 };
+    pub const CSS = packed struct { op: u2, rs2: u5, imm: u6, funct3: u3 };
+    pub const CIW = packed struct {
+        op: u2,
+        prd: u3,
+        imm: u8,
+        funct3: u3,
+
+        pub fn rd(self: @This()) u5 {
+            return @as(u5, self.prd) + 8;
+        }
+    };
+    pub const CL = packed struct {
+        op: u2,
+        prd: u3,
+        imm1: u2,
+        prs1: u3,
+        imm2: u3,
+        funct3: u3,
+
+        pub fn rd(self: @This()) u5 {
+            return @as(u5, self.prd) + 8;
+        }
+
+        pub fn rs1(self: @This()) u5 {
+            return @as(u5, self.rs1) + 8;
+        }
+    };
+
+    pub const CS = packed struct {
+        op: u2,
+        prs2: u3,
+        imm1: u2,
+        prs1: u3,
+        imm2: u3,
+        funct3: u3,
+
+        pub fn rs2(self: @This()) u5 {
+            return @as(u5, self.prs2) + 8;
+        }
+
+        pub fn rs1(self: @This()) u5 {
+            return @as(u5, self.rs1) + 8;
+        }
+    };
+
+    pub const CA = packed struct {
+        op: u2,
+        prs2: u3,
+        funct2: u2,
+        prd: u3,
+        offset: u3,
+        funct3: u3,
+
+        pub fn rs2(self: @This()) u5 {
+            return @as(u5, self.rs2) + 8;
+        }
+
+        pub fn rd(self: @This()) u5 {
+            return @as(u5, self.prd) + 8;
+        }
+    };
+
+    pub const CB = packed struct {
+        op: u2,
+        offset1: u5,
+        prd: u3,
+        offset2: u3,
+        funct3: u3,
+
+        pub fn rd(self: @This()) u5 {
+            return @as(u5, self.prd) + 8;
+        }
+    };
+
+    pub const CJ = packed struct { op: u2, target: u11, funct3: u3 };
+
+    pub const C = packed struct { op: u2, _: u11, funct3: u3 };
+
+    cr: CR,
+    ci: CI,
+    css: CSS,
+    ciw: CIW,
+    cl: CL,
+    cs: CS,
+    ca: CA,
+    cb: CB,
+    cj: CJ,
+    c: C,
+
+    const Self = @This();
+
+    pub fn from_u16(value: u16) Self {
+        return @bitCast(value);
+    }
+
+    pub fn to_u16(self: Self) u16 {
+        return @bitCast(self);
+    }
+
+    pub fn to_varinstr(self: Self) VarInstr {
+        return .{ .x16 = self.to_u16() };
     }
 };

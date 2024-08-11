@@ -58,7 +58,7 @@ pub fn main() !void {
     switch (arch) {
         32 => {
             const CPU =
-                riscv.buildCPU(u32, 1);
+                riscv.buildCPU(.X32, 1);
             const eei = build(CPU);
 
             var cpu = CPU.init(gpa.allocator(), &.{}, .{ .ecall = eei.ecall });
@@ -74,7 +74,7 @@ pub fn main() !void {
             }
         },
         64 => {
-            const CPU = riscv.buildCPU(u64, 1);
+            const CPU = riscv.buildCPU(.X64, 1);
             const eei = build(CPU);
 
             var cpu = CPU.init(gpa.allocator(), &.{}, .{ .ecall = eei.ecall });
@@ -86,22 +86,31 @@ pub fn main() !void {
             };
 
             var memory: [8]u8 = undefined;
-            const ASM = @import("riscv/asm.zig");
-            var instr: ASM.Instr = undefined;
+            var test_memory: [8]u8 = undefined;
+            const ASM = @import("riscv/asm.zig").build_asm(.X64);
+            var instr: ASM = undefined;
             while (d: {
                 _ = try cpu.vmemory_read(cpu.harts[0].pc, &memory);
-                instr = try ASM.Instr.from_memory(&memory);
+                instr = try ASM.from_memory(&memory);
                 print("0x{x} ", .{cpu.harts[0].pc});
                 try instr.write(std.io.getStdErr().writer().any());
                 for (instr.used_grs()) |reg| {
                     if (reg.to_u5() == 0) continue;
-                    print("\tOld Reg: {s} = 0x{x}\n", .{ riscv.GeneralRegsNames[reg.to_u5()], cpu.harts[0].g_regs[reg.to_u5()] });
+                    print("\tOld Reg: {s} = 0x{x}\n", .{ riscv.IntRegNames[reg.to_u5()], cpu.harts[0].g_regs[reg.to_u5()] });
+                }
+                const len = try instr.to_memory(&test_memory);
+                if (!std.mem.eql(u8, memory[0..instr.len()], test_memory[0..len])) {
+                    std.mem.reverse(u8, memory[0..instr.len()]);
+                    std.mem.reverse(u8, test_memory[0..len]);
+                    print("Before: {b:0>8}\n", .{memory[0..instr.len()]});
+                    print("After: {b:0>8}\n", .{test_memory[0..len]});
+                    return error.LossyDissasambler;
                 }
                 break :d cpu.step();
             }) {
                 for (instr.used_grs()) |reg| {
                     if (reg.to_u5() == 0) continue;
-                    print("\tNew Reg: {s} = 0x{x}\n", .{ riscv.GeneralRegsNames[reg.to_u5()], cpu.harts[0].g_regs[reg.to_u5()] });
+                    print("\tNew Reg: {s} = 0x{x}\n", .{ riscv.IntRegNames[reg.to_u5()], cpu.harts[0].g_regs[reg.to_u5()] });
                 }
             } else |err| {
                 print("Exited with: {}\n", .{err});
@@ -117,8 +126,8 @@ pub fn build(comptime CPU: type) type {
     return struct {
         fn ecall(hart: *CPU.Hart, cpu: *CPU) void {
             _ = cpu;
-            if (hart.g_regs[riscv.GeneralReg.A7.to_u5()] == 93) {
-                const a0 = hart.g_regs[riscv.GeneralReg.A0.to_u5()];
+            if (hart.g_regs[riscv.IntReg.A7.to_u5()] == 93) {
+                const a0 = hart.g_regs[riscv.IntReg.A0.to_u5()];
                 if (a0 == 0) {
                     print("Pass\n", .{});
                     std.process.exit(0);

@@ -46,8 +46,10 @@ pub fn build(b: *std.Build) void {
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).
-    b.installArtifact(exe);
-    b.installArtifact(exe_test_runner);
+    const install_exe = b.addInstallArtifact(exe, .{});
+    b.getInstallStep().dependOn(&install_exe.step);
+    const install_exe_test_runner = b.addInstallArtifact(exe_test_runner, .{});
+    b.getInstallStep().dependOn(&install_exe_test_runner.step);
 
     // This *creates* a Run step in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish
@@ -59,8 +61,8 @@ pub fn build(b: *std.Build) void {
     // installation directory rather than directly from within the cache directory.
     // This is not necessary, however, if the application depends on other installed
     // files, this ensures they will be present and in the expected location.
-    run_cmd.step.dependOn(b.getInstallStep());
-    run_cmd_test_runner.step.dependOn(b.getInstallStep());
+    run_cmd.step.dependOn(&install_exe.step);
+    run_cmd_test_runner.step.dependOn(&install_exe_test_runner.step);
 
     // This allows the user to pass arguments to the application in the build
     // command itself, like this: `zig build run -- arg1 arg2 etc`

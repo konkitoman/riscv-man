@@ -1,10 +1,11 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const base = @import("base.zig");
-pub const GeneralRegsNames = base.GeneralRegsNames;
-pub const GeneralReg = base.GeneralReg;
+pub const Arch = base.Arch;
+pub const IntRegNames = base.IntRegNames;
+pub const IntReg = base.IntReg;
 pub const VarInstr = base.VarInstr;
-pub const ImmediateVariant = base.ImmediateVariantX32;
+pub const InstrFX32 = base.InstrFormatX32;
 pub const CSRAddr = base.CSRAddr;
 pub const CSRAddrU = base.CSRAddrU;
 
@@ -26,13 +27,15 @@ pub const MemoryMap = struct {
     }
 };
 
-pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
-    if (uarch != u32 and uarch != u64) {
-        @compileError("CPU arch type needs to be u32 or u64");
-    }
+pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
+    const uarch = arch.uarch();
+    const iarch = arch.iarch();
     const bits: comptime_int = @typeInfo(uarch).Int.bits;
-    const iarch: type = @Type(std.builtin.Type{ .Int = .{ .signedness = .signed, .bits = bits } });
-    const stype: type = if (uarch == u32) u5 else u6;
+    const stype: type = switch (arch) {
+        .X32 => u5,
+        .X64 => u6,
+        .X128 => u6,
+    };
 
     return struct {
         const CPU = @This();
@@ -135,7 +138,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                         self.pc += 2;
                     },
                     .x32 => |x32| {
-                        const instr = ImmediateVariant.from_u32(x32);
+                        const instr = InstrFX32.from_u32(x32);
 
                         switch (instr.opcode) {
                             0b0110111 => self.lui(instr),
@@ -290,7 +293,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                 return .None;
             }
 
-            fn lui(self: *@This(), instr: ImmediateVariant) void {
+            fn lui(self: *@This(), instr: InstrFX32) void {
                 const u = instr.u;
                 if (u.rd != 0) {
                     self.g_regs[u.rd] = 0;
@@ -299,7 +302,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                 self.pc += 4;
             }
 
-            fn auipc(self: *@This(), instr: ImmediateVariant) void {
+            fn auipc(self: *@This(), instr: InstrFX32) void {
                 const offset: uarch = @bitCast(@as(iarch, @as(i32, @bitCast(@as(u32, instr.u.imm_31_12) << 12))));
                 if (instr.u.rd != 0) {
                     self.g_regs[instr.u.rd] = self.pc +% offset;
@@ -307,7 +310,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                 self.pc += 4;
             }
 
-            fn jal(self: *@This(), instr: ImmediateVariant) void {
+            fn jal(self: *@This(), instr: InstrFX32) void {
                 const pc = self.pc + 4;
                 self.pc = @as(uarch, @bitCast(@as(iarch, @bitCast(self.pc)) + (@as(iarch, instr.j.get_imm()) * 2)));
                 if (instr.u.rd != 0) {
@@ -315,7 +318,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                 }
             }
 
-            fn jalr(self: *@This(), instr: ImmediateVariant) void {
+            fn jalr(self: *@This(), instr: InstrFX32) void {
                 const pc = self.pc + 4;
                 self.pc = @as(uarch, @bitCast(@as(iarch, @bitCast(self.g_regs[instr.i.rs1])) + (@as(iarch, @as(i12, @bitCast(instr.i.imm_11_0))))));
                 self.pc ^= self.pc & 1;
@@ -324,7 +327,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                 }
             }
 
-            fn branch(self: *@This(), instr: ImmediateVariant) void {
+            fn branch(self: *@This(), instr: InstrFX32) void {
                 const offset = @as(iarch, instr.b.get_imm()) * 2;
                 switch (instr.b.funct3) {
                     0b000 => { // BEQ
@@ -370,7 +373,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                 self.pc += 4;
             }
 
-            fn load(self: *@This(), instr: ImmediateVariant, cpu: *CPU) !void {
+            fn load(self: *@This(), instr: InstrFX32, cpu: *CPU) !void {
                 const offset: uarch = @bitCast(@as(iarch, @bitCast(self.g_regs[instr.i.rs1])) + @as(iarch, instr.i.imm_11_0));
                 switch (instr.i.funct3) {
                     0b000 => { // LB
@@ -423,7 +426,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                 self.pc += 4;
             }
 
-            fn save(self: *@This(), instr: ImmediateVariant, cpu: *CPU) !void {
+            fn save(self: *@This(), instr: InstrFX32, cpu: *CPU) !void {
                 const offset: uarch = @bitCast((@as(iarch, @bitCast(self.g_regs[instr.s.rs1])) + instr.s.get_imm()));
                 var buffer: [bits / 8]u8 = undefined;
                 std.mem.writeInt(uarch, &buffer, self.g_regs[instr.s.rs2], .little);
@@ -451,7 +454,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                 self.pc += 4;
             }
 
-            fn op_imm(self: *@This(), instr: ImmediateVariant) void {
+            fn op_imm(self: *@This(), instr: InstrFX32) void {
                 const i = instr.i;
                 switch (instr.i.funct3) {
                     0b000 => { // ADDI
@@ -518,7 +521,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                 self.pc += 4;
             }
 
-            fn op_imm_32(self: *@This(), instr: ImmediateVariant) void {
+            fn op_imm_32(self: *@This(), instr: InstrFX32) void {
                 self.pc += 4;
                 if (uarch == u32) {
                     print("OP-IMM-32 not implemented for x32\n", .{});
@@ -560,7 +563,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                 }
             }
 
-            fn op(self: *@This(), instr: ImmediateVariant) void {
+            fn op(self: *@This(), instr: InstrFX32) void {
                 const r = instr.r;
                 switch (r.funct3) {
                     0b000 => { // ADD/SUB
@@ -632,7 +635,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                 self.pc += 4;
             }
 
-            fn op_32(self: *@This(), instr: ImmediateVariant) void {
+            fn op_32(self: *@This(), instr: InstrFX32) void {
                 self.pc += 4;
                 if (uarch == u32) {
                     print("OP-32 not implemented for x32\n", .{});
@@ -687,7 +690,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                 }
             }
 
-            fn misc_mem(self: *@This(), instr: ImmediateVariant) void {
+            fn misc_mem(self: *@This(), instr: InstrFX32) void {
                 switch (instr.f.func3) {
                     0b000 => {
                         print("FENCE is doing nothing!\n", .{});
@@ -699,7 +702,7 @@ pub fn buildCPU(comptime uarch: type, comptime harts_len: usize) type {
                 self.pc += 4;
             }
 
-            fn system(self: *@This(), instr: ImmediateVariant, cpu: *CPU) !void {
+            fn system(self: *@This(), instr: InstrFX32, cpu: *CPU) !void {
                 switch (instr.i.funct3) {
                     0b000 => switch (instr.i.imm_11_0) {
                         0 => { // ECALL
