@@ -34,7 +34,6 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
     const stype: type = switch (arch) {
         .X32 => u5,
         .X64 => u6,
-        .X128 => u6,
     };
 
     return struct {

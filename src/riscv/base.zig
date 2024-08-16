@@ -87,13 +87,11 @@ pub const PopularIntReg = enum(u3) {
 pub const Arch = enum {
     X32,
     X64,
-    X128,
 
     pub fn uarch(self: @This()) type {
         return switch (self) {
             .X32 => u32,
             .X64 => u64,
-            .X128 => u128,
         };
     }
 
@@ -101,7 +99,6 @@ pub const Arch = enum {
         return switch (self) {
             .X32 => i32,
             .X64 => i64,
-            .X128 => i128,
         };
     }
 };
@@ -808,10 +805,11 @@ pub const InstrFormatX16 = packed union {
         }
     };
 
-    pub const CJ = packed struct { op: u2, target: u11, funct3: u3 };
+    pub const CJ = packed struct { op: u2, target: i11, funct3: u3 };
 
     pub const C = packed struct { op: u2, _: u11, funct3: u3 };
 
+    opcode: u2,
     cr: CR,
     ci: CI,
     css: CSS,

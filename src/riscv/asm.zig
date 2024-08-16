@@ -2,6 +2,7 @@ const std = @import("std");
 const log = std.log;
 const base = @import("base.zig");
 
+const IF16 = base.InstrFormatX16;
 const IR = base.IntReg;
 const IRf = IR.from_u5;
 const PIR = base.PopularIntReg;
@@ -14,6 +15,14 @@ const PIRf = PIR.from_u3;
 
 inline fn cast(T: type, value: anytype) T {
     return @bitCast(value);
+}
+
+inline fn t(T: type, value: anytype) T {
+    return @truncate(value);
+}
+
+inline fn s(T: type, value: anytype) T {
+    return @as(T, value);
 }
 
 pub const RV32I = union(enum) {
@@ -698,6 +707,316 @@ pub const Ziscr = union(enum) {
     }
 };
 
+pub const RV32C = union(enum) {
+    C_LWSP: struct { rd: IR, uimm: u6 },
+    C_FLWSP: struct { rd: IR, uimm: u6 },
+    C_SWSP: struct { rs2: IR, uimm: u6 },
+    C_FSWSP: struct { rs2: IR, uimm: u6 },
+    C_LW: struct { rd: PIR, rs1: PIR, uimm: u5 },
+    C_FLW: struct { rd: PIR, rs1: PIR, uimm: u5 },
+    C_SW: struct { rs1: PIR, rs2: PIR, uimm: u5 },
+    C_FSW: struct { rs1: PIR, rs2: PIR, uimm: u5 },
+    C_J: struct { imm: i11 },
+    C_JAL: struct { imm: i11 },
+    C_JR: struct { rs1: IR },
+    C_JALR: struct { rs1: IR },
+    C_BEQZ: struct { rs1: PIR, imm: i8 },
+    C_BNEZ: struct { rs1: PIR, imm: i8 },
+    C_LI: struct { rd: IR, imm: i6 },
+    C_LUI: struct { rd: IR, imm: i6 },
+    C_ADDI: struct { rd: IR, imm: i6 },
+    C_ADDI16SP: struct { imm: i6 },
+    C_ADDI4SPN: struct { rd: PIR, uimm: u8 },
+    C_SLLI: struct { rd: IR, shamt: u6 },
+    C_SRLI: struct { rd: PIR, shamt: u6 },
+    C_SRAI: struct { rd: PIR, shamt: u6 },
+    C_ANDI: struct { rd: PIR, imm: i6 },
+    C_MV: struct { rd: IR, rs2: IR },
+    C_ADD: struct { rd: IR, rs2: IR },
+    C_AND: struct { rd: PIR, rs2: PIR },
+    C_OR: struct { rd: PIR, rs2: PIR },
+    C_XOR: struct { rd: PIR, rs2: PIR },
+    C_SUB: struct { rd: PIR, rs2: PIR },
+    C_EBREAK,
+
+    const Self = @This();
+
+    pub fn to_memory(self: Self, memory: []u8) error{OutOfSpace}!usize {
+        return switch (self) {
+            .C_LWSP => |i| (IF16{ .ci = .{ .funct3 = 0b010, .op = 0b10, .imm_12 = t(u1, i.uimm >> 5), .rd = i.rd.to_u5(), .imm_2_6 = t(u5, i.uimm) } }).to_varinstr().to_memory(memory),
+            .C_FLWSP => |i| (IF16{ .ci = .{ .funct3 = 0b011, .op = 0b10, .imm_12 = t(u1, i.uimm >> 5), .rd = i.rd.to_u5(), .imm_2_6 = t(u5, i.uimm) } }).to_varinstr().to_memory(memory),
+            .C_SWSP => |i| (IF16{ .css = .{ .funct3 = 0b110, .op = 0b10, .imm = i.uimm, .rs2 = i.rs2.to_u5() } }).to_varinstr().to_memory(memory),
+            .C_FSWSP => |i| (IF16{ .css = .{ .funct3 = 0b111, .op = 0b10, .imm = i.uimm, .rs2 = i.rs2.to_u5() } }).to_varinstr().to_memory(memory),
+            .C_LW => |i| (IF16{ .cl = .{ .funct3 = 0b010, .op = 0b00, .imm2 = t(u3, i.uimm >> 2), .prs1 = i.rs1.to_u3(), .imm1 = t(u2, i.uimm), .prd = i.rd.to_u3() } }).to_varinstr().to_memory(memory),
+            .C_FLW => |i| (IF16{ .cl = .{ .funct3 = 0b011, .op = 0b00, .imm2 = t(u3, i.uimm >> 2), .prs1 = i.rs1.to_u3(), .imm1 = t(u2, i.uimm), .prd = i.rd.to_u3() } }).to_varinstr().to_memory(memory),
+            .C_SW => |i| (IF16{ .cs = .{ .funct3 = 0b110, .op = 0b00, .imm2 = t(u3, i.uimm >> 2), .imm1 = t(u2, i.uimm), .prs1 = i.rs1.to_u3(), .prs2 = i.rs2.to_u3() } }).to_varinstr().to_memory(memory),
+            .C_FSW => |i| (IF16{ .cs = .{ .funct3 = 0b111, .op = 0b00, .imm2 = t(u3, i.uimm >> 2), .imm1 = t(u2, i.uimm), .prs1 = i.rs1.to_u3(), .prs2 = i.rs2.to_u3() } }).to_varinstr().to_memory(memory),
+            .C_J => |i| (IF16{ .cj = .{ .funct3 = 0b101, .op = 0b01, .target = i.imm } }).to_varinstr().to_memory(memory),
+            .C_JAL => |i| (IF16{ .cj = .{ .funct3 = 0b001, .op = 0b01, .target = i.imm } }).to_varinstr().to_memory(memory),
+            .C_JR => |i| (IF16{ .cr = .{ .funct4 = 0b1000, .op = 0b10, .rs2 = i.rs1.to_u5(), .rd = 0 } }).to_varinstr().to_memory(memory),
+            .C_JALR => |i| (IF16{ .cr = .{ .funct4 = 0b1001, .op = 0b10, .rs2 = i.rs1.to_u5(), .rd = 0 } }).to_varinstr().to_memory(memory),
+            .C_BEQZ => |i| (IF16{ .cb = .{ .funct3 = 0b110, .op = 0b01, .offset2 = t(u3, cast(u8, i.imm) >> 5), .prd = i.rs1.to_u3(), .offset1 = t(u5, cast(u8, i.imm)) } }).to_varinstr().to_memory(memory),
+            .C_BNEZ => |i| (IF16{ .cb = .{ .funct3 = 0b111, .op = 0b01, .offset2 = t(u3, cast(u8, i.imm) >> 5), .prd = i.rs1.to_u3(), .offset1 = t(u5, cast(u8, i.imm)) } }).to_varinstr().to_memory(memory),
+            .C_LI => |i| (IF16{ .ci = .{ .funct3 = 0b010, .op = 0b01, .imm_12 = t(u1, cast(u6, i.imm) >> 5), .rd = i.rd.to_u5(), .imm_2_6 = t(u5, cast(u6, i.imm)) } }).to_varinstr().to_memory(memory),
+            .C_LUI => |i| (IF16{ .ci = .{ .funct3 = 0b011, .op = 0b01, .imm_12 = t(u1, cast(u6, i.imm) >> 5), .rd = i.rd.to_u5(), .imm_2_6 = t(u5, cast(u6, i.imm)) } }).to_varinstr().to_memory(memory),
+            .C_ADDI => |i| (IF16{ .ci = .{ .funct3 = 0b000, .op = 0b01, .imm_12 = t(u1, cast(u6, i.imm) >> 5), .rd = i.rd.to_u5(), .imm_2_6 = t(u5, cast(u6, i.imm)) } }).to_varinstr().to_memory(memory),
+            .C_ADDI16SP => |i| (IF16{ .ci = .{ .funct3 = 0b011, .op = 0b01, .imm_12 = t(u1, cast(u6, i.imm) >> 5), .rd = 0b00010, .imm_2_6 = t(u5, cast(u6, i.imm)) } }).to_varinstr().to_memory(memory),
+            .C_ADDI4SPN => |i| (IF16{ .ciw = .{ .funct3 = 0b000, .op = 0b00, .imm = i.uimm, .prd = i.rd.to_u3() } }).to_varinstr().to_memory(memory),
+            .C_SLLI => |i| (IF16{ .ci = .{ .funct3 = 0b000, .op = 0b10, .imm_12 = t(u1, i.shamt >> 5), .rd = i.rd.to_u5(), .imm_2_6 = t(u5, i.shamt) } }).to_varinstr().to_memory(memory),
+            .C_SRLI => |i| (IF16{ .cb = .{ .funct3 = 0b100, .op = 0b01, .offset2 = (s(u3, t(u1, i.shamt >> 5)) << 2) | 0b00, .prd = i.rd.to_u3(), .offset1 = t(u5, i.shamt) } }).to_varinstr().to_memory(memory),
+            .C_SRAI => |i| (IF16{ .cb = .{ .funct3 = 0b100, .op = 0b01, .offset2 = (s(u3, t(u1, i.shamt >> 5)) << 2) | 0b01, .prd = i.rd.to_u3(), .offset1 = t(u5, i.shamt) } }).to_varinstr().to_memory(memory),
+            .C_ANDI => |i| (IF16{ .cb = .{ .funct3 = 0b100, .op = 0b01, .offset2 = (s(u3, t(u1, cast(u6, i.imm) >> 5)) << 2) | 0b10, .prd = i.rd.to_u3(), .offset1 = t(u5, cast(u6, i.imm)) } }).to_varinstr().to_memory(memory),
+            .C_MV => |i| (IF16{ .cr = .{ .funct4 = 0b1000, .op = 0b10, .rd = i.rd.to_u5(), .rs2 = i.rs2.to_u5() } }).to_varinstr().to_memory(memory),
+            .C_ADD => |i| (IF16{ .cr = .{ .funct4 = 0b1001, .op = 0b10, .rd = i.rd.to_u5(), .rs2 = i.rs2.to_u5() } }).to_varinstr().to_memory(memory),
+            .C_AND => |i| (IF16{ .ca = .{ .funct3 = 0b100, .op = 0b01, .offset = 0b011, .prd = i.rd.to_u3(), .funct2 = 0b11, .prs2 = i.rs2.to_u3() } }).to_varinstr().to_memory(memory),
+            .C_OR => |i| (IF16{ .ca = .{ .funct3 = 0b100, .op = 0b01, .offset = 0b011, .prd = i.rd.to_u3(), .funct2 = 0b10, .prs2 = i.rs2.to_u3() } }).to_varinstr().to_memory(memory),
+            .C_XOR => |i| (IF16{ .ca = .{ .funct3 = 0b100, .op = 0b01, .offset = 0b011, .prd = i.rd.to_u3(), .funct2 = 0b01, .prs2 = i.rs2.to_u3() } }).to_varinstr().to_memory(memory),
+            .C_SUB => |i| (IF16{ .ca = .{ .funct3 = 0b100, .op = 0b01, .offset = 0b011, .prd = i.rd.to_u3(), .funct2 = 0b00, .prs2 = i.rs2.to_u3() } }).to_varinstr().to_memory(memory),
+            .C_EBREAK => (IF16{ .ci = .{ .funct3 = 0b100, .op = 0b10, .imm_12 = 1, .rd = 0, .imm_2_6 = 0 } }).to_varinstr().to_memory(memory),
+        };
+    }
+
+    pub fn from_memory(instr: base.VarInstr) ?Self {
+        return switch (instr) {
+            .x16 => |x16| {
+                const i = base.InstrFormatX16.from_u16(x16);
+
+                return switch (i.opcode) {
+                    0b00 => switch (i.cl.funct3) {
+                        0b000 => .{ .C_ADDI4SPN = .{ .uimm = i.ciw.imm, .rd = PIRf(i.ciw.prd) } },
+                        0b010 => .{ .C_LW = .{ .uimm = (s(u5, i.cl.imm2) << 2) | s(u5, i.cl.imm1), .rs1 = PIRf(i.cl.prs1), .rd = PIRf(i.cl.prd) } },
+                        0b011 => .{ .C_FLW = .{ .uimm = (s(u5, i.cl.imm2) << 2) | s(u5, i.cl.imm1), .rs1 = PIRf(i.cl.prs1), .rd = PIRf(i.cl.prd) } },
+                        0b110 => Self{ .C_SW = .{ .uimm = (s(u5, i.cs.imm2) << 2) | s(u5, i.cs.imm1), .rs2 = PIRf(i.cs.prs2), .rs1 = PIRf(i.cs.prs1) } },
+                        0b111 => Self{ .C_FSW = .{ .uimm = (s(u5, i.cs.imm2) << 2) | s(u5, i.cs.imm1), .rs2 = PIRf(i.cs.prs2), .rs1 = PIRf(i.cs.prs1) } },
+                        else => null,
+                    },
+                    0b01 => switch (i.ci.funct3) {
+                        0b001 => .{ .C_JAL = .{ .imm = i.cj.target } },
+                        0b000 => .{ .C_ADDI = .{ .imm = cast(i6, (s(u6, i.ci.imm_12) << 5) | s(u6, i.ci.imm_2_6)), .rd = IRf(i.ci.rd) } },
+                        0b010 => .{ .C_LI = .{ .imm = cast(i6, (s(u6, i.ci.imm_12) >> 5) | s(u6, i.ci.imm_2_6)), .rd = IRf(i.ci.rd) } },
+                        0b011 => if (i.ci.rd == 2)
+                            Self{ .C_ADDI16SP = .{ .imm = cast(i6, (s(u6, i.ci.imm_12) >> 5) | s(u6, i.ci.imm_2_6)) } }
+                        else
+                            .{ .C_LUI = .{ .imm = cast(i6, (s(u6, i.ci.imm_12) >> 5) | s(u6, i.ci.imm_2_6)), .rd = IRf(i.ci.rd) } },
+                        0b100 => if (i.ci.rd == 0)
+                            if (i.ci.imm_2_6 == 0)
+                                Self.C_EBREAK
+                            else switch (t(u2, i.cb.offset2)) {
+                                0b00 => Self{ .C_SRLI = .{ .shamt = (s(u6, i.ci.imm_12) << 5) | s(u6, i.cb.offset1), .rd = PIRf(i.cb.prd) } },
+                                0b01 => Self{ .C_SRAI = .{ .shamt = (s(u6, i.ci.imm_12) << 5) | s(u6, i.cb.offset1), .rd = PIRf(i.cb.prd) } },
+                                0b10 => Self{ .C_ANDI = .{ .imm = cast(i6, (s(u6, i.ci.imm_12) << 5) | s(u6, i.cb.offset1)), .rd = PIRf(i.cb.prd) } },
+                                0b11 => if (i.ci.imm_12 == 0)
+                                    switch (i.ca.funct2) {
+                                        0b00 => Self{ .C_SUB = .{ .rd = PIRf(i.ca.prd), .rs2 = PIRf(i.ca.prs2) } },
+                                        0b01 => Self{ .C_XOR = .{ .rd = PIRf(i.ca.prd), .rs2 = PIRf(i.ca.prs2) } },
+                                        0b10 => Self{ .C_OR = .{ .rd = PIRf(i.ca.prd), .rs2 = PIRf(i.ca.prs2) } },
+                                        0b11 => Self{ .C_AND = .{ .rd = PIRf(i.ca.prd), .rs2 = PIRf(i.ca.prs2) } },
+                                    }
+                                else
+                                    null,
+                            }
+                        else
+                            null,
+                        0b101 => .{ .C_J = .{ .imm = i.cj.target } },
+                        0b110 => .{ .C_BEQZ = .{ .imm = cast(i8, (s(u8, i.cb.offset2) << 5) | s(u8, i.cb.offset1)), .rs1 = PIRf(i.cb.prd) } },
+                        0b111 => .{ .C_BNEZ = .{ .imm = cast(i8, (s(u8, i.cb.offset2) << 5) | s(u8, i.cb.offset1)), .rs1 = PIRf(i.cb.prd) } },
+                    },
+                    0b10 => switch (i.ci.funct3) {
+                        0b000 => .{ .C_SLLI = .{ .shamt = (s(u6, i.ci.imm_12) << 5) | s(u6, i.ci.imm_2_6), .rd = IRf(i.ci.rd) } },
+                        0b010 => .{ .C_LWSP = .{ .uimm = (s(u6, i.ci.imm_12) << 5) | s(u6, i.ci.imm_2_6), .rd = IRf(i.ci.rd) } },
+                        0b011 => .{ .C_FLWSP = .{ .uimm = (s(u6, i.ci.imm_12) << 5) | s(u6, i.ci.imm_2_6), .rd = IRf(i.ci.rd) } },
+                        0b100 => switch (i.ci.imm_12) {
+                            0 => if (i.cr.rd == 0)
+                                Self{ .C_JR = .{ .rs1 = IRf(i.cr.rs2) } }
+                            else
+                                Self{ .C_MV = .{ .rd = IRf(i.cr.rd), .rs2 = IRf(i.cr.rs2) } },
+                            1 => if (i.cr.rd == 0)
+                                Self{ .C_JALR = .{ .rs1 = IRf(i.cr.rs2) } }
+                            else
+                                Self{ .C_ADD = .{ .rd = IRf(i.cr.rd), .rs2 = IRf(i.cr.rs2) } },
+                        },
+                        0b110 => .{ .C_SWSP = .{ .uimm = i.css.imm, .rs2 = IRf(i.css.rs2) } },
+                        0b111 => .{ .C_FSWSP = .{ .uimm = i.css.imm, .rs2 = IRf(i.css.rs2) } },
+                        else => null,
+                    },
+                    else => null,
+                };
+            },
+            else => null,
+        };
+    }
+
+    pub fn len(self: Self) usize {
+        _ = self;
+        return 2;
+    }
+
+    pub fn write(self: Self, writer: std.io.AnyWriter) !void {
+        return switch (self) {
+            .C_LWSP => |i| writer.print("C_LWSP {s}, 0x{x}\n", .{ i.rd.name(), i.uimm }),
+            .C_FLWSP => |i| writer.print("C_FLWSP {s}, 0x{x}\n", .{ i.rd.name(), i.uimm }),
+            .C_SWSP => |i| writer.print("C_SWSP {s}, 0x{x}\n", .{ i.rs2.name(), i.uimm }),
+            .C_FSWSP => |i| writer.print("C_FSWSP {s}, 0x{x}\n", .{ i.rs2.name(), i.uimm }),
+            .C_LW => |i| writer.print("C_LW {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), i.uimm }),
+            .C_FLW => |i| writer.print("C_FLW {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), i.uimm }),
+            .C_SW => |i| writer.print("C_SW {s}, {s}, 0x{x}\n", .{ i.rs1.name(), i.rs2.name(), i.uimm }),
+            .C_FSW => |i| writer.print("C_FSW {s}, {s}, 0x{x}\n", .{ i.rs1.name(), i.rs2.name(), i.uimm }),
+            .C_J => |i| writer.print("C_J {x}\n", .{i.imm}),
+            .C_JAL => |i| writer.print("C_JAL {x}\n", .{i.imm}),
+            .C_JR => |i| writer.print("C_JR {s}\n", .{i.rs1.name()}),
+            .C_JALR => |i| writer.print("C_JALR {s}\n", .{i.rs1.name()}),
+            .C_BEQZ => |i| writer.print("C_BEQZ {s}, {x}\n", .{ i.rs1.name(), i.imm }),
+            .C_BNEZ => |i| writer.print("C_BNEZ {s}, {x}\n", .{ i.rs1.name(), i.imm }),
+            .C_LI => |i| writer.print("C_LI {s}, {x}\n", .{ i.rd.name(), i.imm }),
+            .C_LUI => |i| writer.print("C_LUI {s}, {x}\n", .{ i.rd.name(), i.imm }),
+            .C_ADDI => |i| writer.print("C_ADDI {s}, {x}\n", .{ i.rd.name(), i.imm }),
+            .C_ADDI16SP => |i| writer.print("C_ADDI16SP {x}\n", .{i.imm}),
+            .C_ADDI4SPN => |i| writer.print("C_ADDI4SPN {s}, {x}\n", .{ i.rd.name(), i.uimm }),
+            .C_SLLI => |i| writer.print("C_SLLI {s}, {x}\n", .{ i.rd.name(), i.shamt }),
+            .C_SRLI => |i| writer.print("C_SRLI {s}, {x}\n", .{ i.rd.name(), i.shamt }),
+            .C_SRAI => |i| writer.print("C_SRAI {s}, {x}\n", .{ i.rd.name(), i.shamt }),
+            .C_ANDI => |i| writer.print("C_ANDI {s}, {x}\n", .{ i.rd.name(), i.imm }),
+            .C_MV => |i| writer.print("C_MV {s}, {s}\n", .{ i.rd.name(), i.rs2.name() }),
+            .C_ADD => |i| writer.print("C_ADD {s}, {s}\n", .{ i.rd.name(), i.rs2.name() }),
+            .C_AND => |i| writer.print("C_AND {s}, {s}\n", .{ i.rd.name(), i.rs2.name() }),
+            .C_OR => |i| writer.print("C_OR {s}, {s}\n", .{ i.rd.name(), i.rs2.name() }),
+            .C_XOR => |i| writer.print("C_XOR {s}, {s}\n", .{ i.rd.name(), i.rs2.name() }),
+            .C_SUB => |i| writer.print("C_SUB {s}, {s}\n", .{ i.rd.name(), i.rs2.name() }),
+            .C_EBREAK => writer.print("C_EBREAK\n", .{}),
+        };
+    }
+
+    pub fn used_grs(self: Self) [3]IR {
+        return switch (self) {
+            .C_LWSP => |i| .{ i.rd, IR.SP, IR.ZERO },
+            .C_FLWSP => |i| .{ i.rd, IR.SP, IR.ZERO },
+            .C_SWSP => |i| .{ i.rs2, IR.SP, IR.ZERO },
+            .C_FSWSP => |i| .{ i.rs2, IR.SP, IR.ZERO },
+            .C_LW => |i| .{ i.rd.to_reg(), i.rs1.to_reg(), IR.ZERO },
+            .C_FLW => |i| .{ i.rd.to_reg(), i.rs1.to_reg(), IR.ZERO },
+            .C_SW => |i| .{ i.rs1.to_reg(), i.rs2.to_reg(), IR.ZERO },
+            .C_FSW => |i| .{ i.rs1.to_reg(), i.rs2.to_reg(), IR.ZERO },
+            .C_J => |_| .{ IR.ZERO, IR.ZERO, IR.ZERO },
+            .C_JAL => |_| .{ IR.ZERO, IR.ZERO, IR.ZERO },
+            .C_JR => |i| .{ i.rs1, IR.ZERO, IR.ZERO },
+            .C_JALR => |i| .{ i.rs1, IR.RA, IR.ZERO },
+            .C_BEQZ => |i| .{ i.rs1.to_reg(), IR.ZERO, IR.ZERO },
+            .C_BNEZ => |i| .{ i.rs1.to_reg(), IR.ZERO, IR.ZERO },
+            .C_LI => |i| .{ i.rd, IR.ZERO, IR.ZERO },
+            .C_LUI => |i| .{ i.rd, IR.ZERO, IR.ZERO },
+            .C_ADDI => |i| .{ i.rd, IR.ZERO, IR.ZERO },
+            .C_ADDI16SP => |_| .{ IR.SP, IR.ZERO, IR.ZERO },
+            .C_ADDI4SPN => |_| .{ IR.SP, IR.ZERO, IR.ZERO },
+            .C_SLLI => |i| .{ i.rd, IR.ZERO, IR.ZERO },
+            .C_SRLI => |i| .{ i.rd.to_reg(), IR.ZERO, IR.ZERO },
+            .C_SRAI => |i| .{ i.rd.to_reg(), IR.ZERO, IR.ZERO },
+            .C_ANDI => |i| .{ i.rd.to_reg(), IR.ZERO, IR.ZERO },
+            .C_MV => |i| .{ i.rd, i.rs2, IR.ZERO },
+            .C_ADD => |i| .{ i.rd, i.rs2, IR.ZERO },
+            .C_AND => |i| .{ i.rd.to_reg(), i.rs2.to_reg(), IR.ZERO },
+            .C_OR => |i| .{ i.rd.to_reg(), i.rs2.to_reg(), IR.ZERO },
+            .C_XOR => |i| .{ i.rd.to_reg(), i.rs2.to_reg(), IR.ZERO },
+            .C_SUB => |i| .{ i.rd.to_reg(), i.rs2.to_reg(), IR.ZERO },
+            .C_EBREAK => .{ IR.ZERO, IR.ZERO, IR.ZERO },
+        };
+    }
+};
+
+pub const RV64C = union(enum) {
+    C_LDSP: struct { rd: IR, uimm: u6 },
+    C_FLDSP: struct { rd: IR, uimm: u6 },
+    C_SDSP: struct { rd: IR, uimm: u6 },
+    C_FSDSP: struct { rd: IR, uimm: u6 },
+    C_LD: struct { rd: PIR, rs1: PIR, uimm: u5 },
+    C_FLD: struct { rd: PIR, rs1: PIR, uimm: u5 },
+    C_ADDIW: struct { rd: IR, imm: i6 },
+    C_ADDW: struct { rd: PIR, rs2: PIR },
+    C_SUBW: struct { rd: PIR, rs2: PIR },
+
+    const Self = @This();
+
+    pub fn to_memory(self: Self, memory: []u8) error{OutOfSpace}!usize {
+        return switch (self) {
+            .C_LDSP => |i| (base.InstrFormatX16{ .ci = .{ .funct3 = 0b011, .imm_12 = t(u1, i.uimm >> 5), .rd = i.rd.to_u5(), .imm_2_6 = t(u5, i.uimm), .op = 0b10 } }).to_varinstr().to_memory(memory),
+            .C_FLDSP => |i| (base.InstrFormatX16{ .ci = .{ .funct3 = 0b001, .imm_12 = t(u1, i.uimm >> 5), .rd = i.rd.to_u5(), .imm_2_6 = t(u5, i.uimm), .op = 0b10 } }).to_varinstr().to_memory(memory),
+            .C_SDSP => |i| (base.InstrFormatX16{ .css = .{ .funct3 = 0b111, .imm = i.uimm, .rs2 = i.rd.to_u5(), .op = 0b10 } }).to_varinstr().to_memory(memory),
+            .C_FSDSP => |i| (base.InstrFormatX16{ .css = .{ .funct3 = 0b101, .imm = i.uimm, .rs2 = i.rd.to_u5(), .op = 0b10 } }).to_varinstr().to_memory(memory),
+            .C_LD => |i| (base.InstrFormatX16{ .cl = .{ .funct3 = 0b011, .imm2 = t(u3, i.uimm), .prs1 = i.rs1.to_u3(), .imm1 = t(u2, i.uimm << 3), .prd = i.rd.to_u3(), .op = 0b00 } }).to_varinstr().to_memory(memory),
+            .C_FLD => |i| (base.InstrFormatX16{ .cl = .{ .funct3 = 0b001, .imm2 = t(u3, i.uimm), .prs1 = i.rs1.to_u3(), .imm1 = t(u2, i.uimm << 3), .prd = i.rd.to_u3(), .op = 0b00 } }).to_varinstr().to_memory(memory),
+            .C_ADDIW => |i| (base.InstrFormatX16{ .ci = .{ .funct3 = 0b001, .imm_12 = t(u1, cast(u6, i.imm) >> 5), .rd = i.rd.to_u5(), .imm_2_6 = t(u5, cast(u6, i.imm)), .op = 0b01 } }).to_varinstr().to_memory(memory),
+            .C_ADDW => |i| (base.InstrFormatX16{ .ca = .{ .funct3 = 0b100, .offset = 0b111, .prd = i.rd.to_u3(), .funct2 = 0b01, .prs2 = i.rs2.to_u3(), .op = 0b01 } }).to_varinstr().to_memory(memory),
+            .C_SUBW => |i| (base.InstrFormatX16{ .ca = .{ .funct3 = 0b100, .offset = 0b111, .prd = i.rd.to_u3(), .funct2 = 0b00, .prs2 = i.rs2.to_u3(), .op = 0b01 } }).to_varinstr().to_memory(memory),
+        };
+    }
+
+    pub fn from_memory(instr: base.VarInstr) ?Self {
+        return switch (instr) {
+            .x16 => |x16| {
+                const i = base.InstrFormatX16.from_u16(x16);
+
+                return switch (i.opcode) {
+                    0b00 => switch (i.cl.funct3) {
+                        0b001 => .{ .C_LD = .{ .uimm = (s(u5, i.cl.imm1) << 3) + s(u5, i.cl.imm2), .rs1 = PIRf(i.cl.prs1), .rd = PIRf(i.cl.prd) } },
+                        0b011 => .{ .C_FLD = .{ .uimm = (s(u5, i.cl.imm1) << 3) + s(u5, i.cl.imm2), .rs1 = PIRf(i.cl.prs1), .rd = PIRf(i.cl.prd) } },
+                        else => null,
+                    },
+                    0b01 => switch (i.ca.funct3) {
+                        0b001 => Self{ .C_ADDIW = .{ .imm = cast(i6, (s(u6, i.ci.imm_12) << 5) + s(u6, i.ci.imm_2_6)), .rd = IRf(i.ci.rd) } },
+                        0b100 => switch (i.ca.funct2) {
+                            0b00 => .{ .C_SUBW = .{ .rd = PIRf(i.ca.prd), .rs2 = PIRf(i.ca.prs2) } },
+                            0b01 => .{ .C_ADDW = .{ .rd = PIRf(i.ca.prd), .rs2 = PIRf(i.ca.prs2) } },
+                            else => null,
+                        },
+                        else => null,
+                    },
+                    0b10 => switch (i.ci.funct3) {
+                        0b001 => .{ .C_FLDSP = .{ .rd = IRf(i.ci.rd), .uimm = (s(u6, i.ci.imm_12) << 5) + s(u6, i.ci.imm_2_6) } },
+                        0b011 => .{ .C_LDSP = .{ .rd = IRf(i.ci.rd), .uimm = (s(u6, i.ci.imm_12) << 5) + s(u6, i.ci.imm_2_6) } },
+                        0b101 => .{ .C_FSDSP = .{ .rd = IRf(i.css.rs2), .uimm = i.css.imm } },
+                        0b111 => .{ .C_SDSP = .{ .rd = IRf(i.css.rs2), .uimm = i.css.imm } },
+                        else => null,
+                    },
+                    else => null,
+                };
+            },
+            else => null,
+        };
+    }
+
+    pub fn len(self: Self) usize {
+        _ = self;
+        return 2;
+    }
+
+    pub fn write(self: Self, writer: std.io.AnyWriter) !void {
+        return switch (self) {
+            .C_LDSP => |i| writer.print("LDSP {s}, 0x{x}\n", .{ i.rd.name(), i.uimm }),
+            .C_FLDSP => |i| writer.print("FLDSP {s}, 0x{x}\n", .{ i.rd.name(), i.uimm }),
+            .C_SDSP => |i| writer.print("SDSP {s}, 0x{x}\n", .{ i.rd.name(), i.uimm }),
+            .C_FSDSP => |i| writer.print("FSDSP {s}, 0x{x}\n", .{ i.rd.name(), i.uimm }),
+            .C_LD => |i| writer.print("LD {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), i.uimm }),
+            .C_FLD => |i| writer.print("FLD {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), i.uimm }),
+            .C_ADDIW => |i| writer.print("ADDIW {s}, {x}\n", .{ i.rd.name(), i.imm }),
+            .C_ADDW => |i| writer.print("ADDW {s}, {s}\n", .{ i.rd.name(), i.rs2.name() }),
+            .C_SUBW => |i| writer.print("SUBW {s}, {s}\n", .{ i.rd.name(), i.rs2.name() }),
+        };
+    }
+
+    pub fn used_grs(self: Self) [3]IR {
+        return switch (self) {
+            .C_LDSP => |i| .{ i.rd, IR.ZERO, IR.ZERO },
+            .C_FLDSP => |i| .{ i.rd, IR.ZERO, IR.ZERO },
+            .C_SDSP => |i| .{ i.rd, IR.ZERO, IR.ZERO },
+            .C_FSDSP => |i| .{ i.rd, IR.ZERO, IR.ZERO },
+            .C_LD => |i| .{ i.rd.to_reg(), i.rs1.to_reg(), IR.ZERO },
+            .C_FLD => |i| .{ i.rd.to_reg(), i.rs1.to_reg(), IR.ZERO },
+            .C_ADDIW => |i| .{ i.rd, IR.ZERO, IR.ZERO },
+            .C_ADDW => |i| .{ i.rd.to_reg(), i.rs2.to_reg(), IR.ZERO },
+            .C_SUBW => |i| .{ i.rd.to_reg(), i.rs2.to_reg(), IR.ZERO },
+        };
+    }
+};
+
 pub fn build_asm(comptime arch: base.Arch) type {
     return switch (arch) {
         .X32 => union(enum) {
@@ -751,6 +1070,8 @@ pub fn build_asm(comptime arch: base.Arch) type {
             rv32i: RV32I,
             rv64i: RV64I,
             z_iscr: Ziscr,
+            rv32c: RV32C,
+            rv64c: RV64C,
 
             const Self = @This();
 
@@ -759,6 +1080,8 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv32i => |i| i.to_memory(memory),
                     .rv64i => |i| i.to_memory(memory),
                     .z_iscr => |i| i.to_memory(memory),
+                    .rv32c => |i| i.to_memory(memory),
+                    .rv64c => |i| i.to_memory(memory),
                 };
             }
 
@@ -773,6 +1096,12 @@ pub fn build_asm(comptime arch: base.Arch) type {
                 if (Ziscr.from_memory(v)) |i| {
                     return .{ .z_iscr = i };
                 }
+                if (RV64C.from_memory(v)) |i| {
+                    return .{ .rv64c = i };
+                }
+                if (RV32C.from_memory(v)) |i| {
+                    return .{ .rv32c = i };
+                }
 
                 v.debug();
                 return error.Unimplemented;
@@ -783,6 +1112,8 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv32i => |i| i.len(),
                     .rv64i => |i| i.len(),
                     .z_iscr => |i| i.len(),
+                    .rv32c => |i| i.len(),
+                    .rv64c => |i| i.len(),
                 };
             }
 
@@ -791,6 +1122,8 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv32i => |i| i.write(writer),
                     .rv64i => |i| i.write(writer),
                     .z_iscr => |i| i.write(writer),
+                    .rv32c => |i| i.write(writer),
+                    .rv64c => |i| i.write(writer),
                 };
             }
 
@@ -799,13 +1132,10 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv32i => |i| i.used_grs(),
                     .rv64i => |i| i.used_grs(),
                     .z_iscr => |i| i.used_grs(),
+                    .rv32c => |i| i.used_grs(),
+                    .rv64c => |i| i.used_grs(),
                 };
             }
-        },
-        .X128 => union(enum) {
-            rv32i: RV32I,
-            rv64i: RV64I,
-            z_iscr: Ziscr,
         },
     };
 }
