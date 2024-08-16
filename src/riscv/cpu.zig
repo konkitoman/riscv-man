@@ -133,7 +133,8 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
 
                 if (e_var_instr) |var_instr| switch (var_instr) {
                     .x16 => |x16| {
-                        print("Found x16 instr: {x}\n", .{x16});
+                        _ = x16;
+                        var_instr.debug();
                         self.pc += 2;
                     },
                     .x32 => |x32| {
@@ -160,7 +161,8 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                         }
                     },
                     .x64 => |x64| {
-                        print("Found x64 instr: {x}\n", .{x64});
+                        _ = x64;
+                        var_instr.debug();
                         self.pc += 8;
                     },
                 } else |e| print("When reading VarInstr at {x}, an error acured: {}\n", .{ self.pc, e });
