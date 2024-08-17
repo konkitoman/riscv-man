@@ -5,6 +5,7 @@ pub const Arch = base.Arch;
 pub const IntRegNames = base.IntRegNames;
 pub const IntReg = base.IntReg;
 pub const VarInstr = base.VarInstr;
+pub const InstrFX16 = base.InstrFormatX16;
 pub const InstrFX32 = base.InstrFormatX32;
 pub const CSRAddr = base.CSRAddr;
 pub const CSRAddrU = base.CSRAddrU;
@@ -133,9 +134,31 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
 
                 if (e_var_instr) |var_instr| switch (var_instr) {
                     .x16 => |x16| {
-                        _ = x16;
-                        var_instr.debug();
-                        self.pc += 2;
+                        const instr = InstrFX16.from_u16(x16);
+                        switch (instr.opcode) {
+                            0b00 => {
+                                var_instr.debug();
+                                self.pc += 2;
+                            },
+                            0b01 => if (instr.ci.rd != 0)
+                                switch (instr.ci.funct3) {
+                                    0b000 => self.c_addi(instr),
+                                    0b001 => self.c_addiw(instr),
+                                    0b011 => self.c_lui(instr),
+                                    else => {
+                                        var_instr.debug();
+                                        self.pc += 2;
+                                    },
+                                },
+                            0b10 => {
+                                var_instr.debug();
+                                self.pc += 2;
+                            },
+                            else => {
+                                var_instr.debug();
+                                self.pc += 2;
+                            },
+                        }
                     },
                     .x32 => |x32| {
                         const instr = InstrFX32.from_u32(x32);
@@ -293,6 +316,8 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
 
                 return .None;
             }
+
+            // RVI
 
             fn lui(self: *@This(), instr: InstrFX32) void {
                 const u = instr.u;
@@ -706,31 +731,8 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
             fn system(self: *@This(), instr: InstrFX32, cpu: *CPU) !void {
                 switch (instr.i.funct3) {
                     0b000 => switch (instr.i.imm_11_0) {
-                        0 => { // ECALL
-                            cpu.eei.ecall(self, cpu);
-
-                            // const padding = "    ";
-                            // for (&self.g_regs, GeneralRegsNames) |*g_reg, x| {
-                            //     print("\t{s}{s} = 0x{x:0>16}\n", .{ x, padding[x.len..], g_reg.* });
-                            // }
-                            // print("\tPC   = {x}\n", .{self.pc});
-
-                            // For Test suite
-                            // if (self.g_regs[GeneralReg.A7.to_u5()] == 93) {
-                            // const tests = self.g_regs[GeneralReg.GP.to_u5()];
-                            //     const a0 = self.g_regs[GeneralReg.A0.to_u5()];
-                            //     if (a0 == 0) {
-                            //         print("Pass\n", .{});
-                            //     } else {
-                            //         print("Fail: {d}\n", .{a0});
-                            //     }
-                            // }
-                            // print("\tCSRs:\n", .{});
-
-                            // dump_csrs(hart.*, &[_]riscv.CSRAddr{ .fflags, .frm, .fcsr, .cycle, .time, .instret, .mvendorid, .marchid, .mimpid, .mhartid, .mconfigptr, .mstatus, .misa, .medeleg, .mideleg, .mie, .mtvec, .mcounteren, .mscratch, .mepc, .mcause, .mtval, .mip, .mtinst, .mtval2, .menvcfg, .mseccfg, .pmpcfg0, .pmpaddr0, .pmpaddr1, .mstateen0, .mstateen1, .mstateen2, .mstateen3 });
-                            // print("MEM:\n", .{});
-                            // std.debug.dump_hex(cpu.memory.items);
-                        },
+                        // ECALL
+                        0 => cpu.eei.ecall(self, cpu),
                         1 => { // EBREAK
                             return error.Break;
                         },
@@ -814,6 +816,50 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
 
                 self.pc += 4;
             }
+
+            // END RVI
+
+            // RVC
+
+            fn c_addi(self: *@This(), instr: InstrFX16) void {
+                const imm = @as(iarch, @as(i6, @bitCast((@as(u6, instr.ci.imm_12) << 5) | @as(u6, instr.ci.imm_2_6))));
+
+                if (imm == 0) {
+                    self.pc += 2;
+                    return;
+                }
+
+                self.g_regs[instr.ci.rd] +%= @as(uarch, @bitCast(imm));
+                self.pc += 2;
+            }
+
+            fn c_addiw(self: *@This(), instr: InstrFX16) void {
+                if (arch == .X32) {
+                    print("C_ADDIW is not implemented for x32 CPU!\n", .{});
+                    self.pc += 2;
+                    return;
+                }
+
+                const imm = @as(i32, @as(i6, @bitCast((@as(u6, instr.ci.imm_12) << 5) | @as(u6, instr.ci.imm_2_6))));
+                self.g_regs[instr.ci.rd] = @bitCast(@as(iarch, @as(i32, @bitCast(@as(u32, @truncate(self.g_regs[instr.ci.rd])) +% @as(u32, @bitCast(imm))))));
+                self.pc += 2;
+            }
+
+            fn c_lui(self: *@This(), instr: InstrFX16) void {
+                const imm = @as(iarch, @as(i6, @bitCast((@as(u6, instr.ci.imm_12) << 5) | @as(u6, instr.ci.imm_2_6))));
+                if (instr.ci.rd == 2) {
+                    if (imm == 0) {
+                        self.pc += 2;
+                        return;
+                    }
+                    self.g_regs[2] +%= @as(uarch, @bitCast(imm * 16));
+                } else {
+                    self.g_regs[instr.ci.rd] = @as(uarch, @bitCast(imm)) << 12;
+                }
+                self.pc += 2;
+            }
+
+            // END RVC
         };
 
         eei: EEI,

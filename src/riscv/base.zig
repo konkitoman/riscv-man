@@ -610,10 +610,10 @@ pub const VarInstr = union(enum) {
     pub fn debug(self: Self) void {
         switch (self) {
             .x16 => |x| {
-                std.debug.print("X16 Instr: {b:0>16}\n", .{x});
+                InstrFormatX16.from_u16(x).debug();
             },
             .x32 => |x| {
-                std.debug.print("X32 Instr: {b:0>32}\n", .{x});
+                InstrFormatX32.from_u32(x).debug();
             },
             .x64 => |x| {
                 std.debug.print("X64 Instr: {b:0>64}\n", .{x});
@@ -726,6 +726,10 @@ pub const InstrFormatX32 = packed union {
     pub fn to_varinstr(self: Self) VarInstr {
         return .{ .x32 = self.to_u32() };
     }
+
+    pub fn debug(self: Self) void {
+        std.debug.print("X32 Instr: {b:0>32}\n", .{self.to_u32()});
+    }
 };
 
 pub const InstrFormatX16 = packed union {
@@ -833,5 +837,9 @@ pub const InstrFormatX16 = packed union {
 
     pub fn to_varinstr(self: Self) VarInstr {
         return .{ .x16 = self.to_u16() };
+    }
+
+    pub fn debug(self: Self) void {
+        std.debug.print("X16 Instr: {b:0>16}\n", .{self.to_u16()});
     }
 };

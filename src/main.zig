@@ -39,7 +39,12 @@ pub fn main() !void {
             return error.LossyDissasambler;
         }
         break :d cpu.step();
-    }) {} else |err| {
+    }) {
+        for (instr.used_grs()) |reg| {
+            if (reg.to_u5() == 0) continue;
+            print("\tNew Reg: {s} = 0x{x}\n", .{ riscv.IntRegNames[reg.to_u5()], cpu.harts[0].g_regs[reg.to_u5()] });
+        }
+    } else |err| {
         print("{}\n", .{err});
     }
 }
