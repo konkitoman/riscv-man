@@ -3,6 +3,7 @@ const log = std.log;
 const base = @import("base.zig");
 
 const IF16 = base.InstrFormatX16;
+const IF32 = base.InstrFormatX32;
 const IR = base.IntReg;
 const IRf = IR.from_u5;
 const PIR = base.PopularIntReg;
@@ -614,6 +615,156 @@ pub const RV64I = union(enum) {
     }
 };
 
+pub const RV32M = union(enum) {
+    MUL: struct { rd: IR, rs1: IR, rs2: IR },
+    MULH: struct { rd: IR, rs1: IR, rs2: IR },
+    MULHSU: struct { rd: IR, rs1: IR, rs2: IR },
+    MULHU: struct { rd: IR, rs1: IR, rs2: IR },
+    DIV: struct { rd: IR, rs1: IR, rs2: IR },
+    DIVU: struct { rd: IR, rs1: IR, rs2: IR },
+    REM: struct { rd: IR, rs1: IR, rs2: IR },
+    REMU: struct { rd: IR, rs1: IR, rs2: IR },
+
+    const Self = @This();
+
+    pub fn to_memory(self: Self, memory: []u8) error{OutOfSpace}!usize {
+        const vari = switch (self) {
+            .MUL => |i| (IF32{ .r = .{ .funct7 = 0b0000001, .funct3 = 0b000, .opcode = 0b0110011, .rd = i.rd.to_u5(), .rs1 = i.rs1.to_u5(), .rs2 = i.rs2.to_u5() } }),
+            .MULH => |i| (IF32{ .r = .{ .funct7 = 0b0000001, .funct3 = 0b001, .opcode = 0b0110011, .rd = i.rd.to_u5(), .rs1 = i.rs1.to_u5(), .rs2 = i.rs2.to_u5() } }),
+            .MULHSU => |i| (IF32{ .r = .{ .funct7 = 0b0000001, .funct3 = 0b010, .opcode = 0b0110011, .rd = i.rd.to_u5(), .rs1 = i.rs1.to_u5(), .rs2 = i.rs2.to_u5() } }),
+            .MULHU => |i| (IF32{ .r = .{ .funct7 = 0b0000001, .funct3 = 0b011, .opcode = 0b0110011, .rd = i.rd.to_u5(), .rs1 = i.rs1.to_u5(), .rs2 = i.rs2.to_u5() } }),
+            .DIV => |i| (IF32{ .r = .{ .funct7 = 0b0000001, .funct3 = 0b100, .opcode = 0b0110011, .rd = i.rd.to_u5(), .rs1 = i.rs1.to_u5(), .rs2 = i.rs2.to_u5() } }),
+            .DIVU => |i| (IF32{ .r = .{ .funct7 = 0b0000001, .funct3 = 0b101, .opcode = 0b0110011, .rd = i.rd.to_u5(), .rs1 = i.rs1.to_u5(), .rs2 = i.rs2.to_u5() } }),
+            .REM => |i| (IF32{ .r = .{ .funct7 = 0b0000001, .funct3 = 0b110, .opcode = 0b0110011, .rd = i.rd.to_u5(), .rs1 = i.rs1.to_u5(), .rs2 = i.rs2.to_u5() } }),
+            .REMU => |i| (IF32{ .r = .{ .funct7 = 0b0000001, .funct3 = 0b111, .opcode = 0b0110011, .rd = i.rd.to_u5(), .rs1 = i.rs1.to_u5(), .rs2 = i.rs2.to_u5() } }),
+        };
+        return vari.to_varinstr().to_memory(memory);
+    }
+
+    pub fn from_memory(instr: base.VarInstr) ?Self {
+        return switch (instr) {
+            .x32 => |x32| {
+                const i = base.InstrFormatX32.from_u32(x32);
+
+                if (i.r.opcode != 0b0110011 or i.r.funct7 != 0b0000001) {
+                    return null;
+                }
+
+                return switch (i.r.funct3) {
+                    0b000 => Self{ .MUL = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                    0b001 => Self{ .MULH = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                    0b010 => Self{ .MULHSU = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                    0b011 => Self{ .MULHU = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                    0b100 => Self{ .DIV = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                    0b101 => Self{ .DIVU = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                    0b110 => Self{ .REM = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                    0b111 => Self{ .REMU = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                };
+            },
+            else => null,
+        };
+    }
+
+    pub fn len(self: Self) usize {
+        _ = self;
+        return 4;
+    }
+
+    pub fn write(self: Self, writer: std.io.AnyWriter) !void {
+        return switch (self) {
+            .MUL => |i| writer.print("MUL {s}, {s}, {s}\n", .{ i.rd.name(), i.rs1.name(), i.rs2.name() }),
+            .MULH => |i| writer.print("MULH {s}, {s}, {s}\n", .{ i.rd.name(), i.rs1.name(), i.rs2.name() }),
+            .MULHSU => |i| writer.print("MULHSU {s}, {s}, {s}\n", .{ i.rd.name(), i.rs1.name(), i.rs2.name() }),
+            .MULHU => |i| writer.print("MULHU {s}, {s}, {s}\n", .{ i.rd.name(), i.rs1.name(), i.rs2.name() }),
+            .DIV => |i| writer.print("DIV {s}, {s}, {s}\n", .{ i.rd.name(), i.rs1.name(), i.rs2.name() }),
+            .DIVU => |i| writer.print("DIVU {s}, {s}, {s}\n", .{ i.rd.name(), i.rs1.name(), i.rs2.name() }),
+            .REM => |i| writer.print("REM {s}, {s}, {s}\n", .{ i.rd.name(), i.rs1.name(), i.rs2.name() }),
+            .REMU => |i| writer.print("REMU {s}, {s}, {s}\n", .{ i.rd.name(), i.rs1.name(), i.rs2.name() }),
+        };
+    }
+
+    pub fn used_grs(self: Self) [3]IR {
+        return switch (self) {
+            .MUL => |i| .{ i.rd, i.rs1, i.rs2 },
+            .MULH => |i| .{ i.rd, i.rs1, i.rs2 },
+            .MULHSU => |i| .{ i.rd, i.rs1, i.rs2 },
+            .MULHU => |i| .{ i.rd, i.rs1, i.rs2 },
+            .DIV => |i| .{ i.rd, i.rs1, i.rs2 },
+            .DIVU => |i| .{ i.rd, i.rs1, i.rs2 },
+            .REM => |i| .{ i.rd, i.rs1, i.rs2 },
+            .REMU => |i| .{ i.rd, i.rs1, i.rs2 },
+        };
+    }
+};
+
+pub const RV64M = union(enum) {
+    MULW: struct { rd: IR, rs1: IR, rs2: IR },
+    DIVW: struct { rd: IR, rs1: IR, rs2: IR },
+    DIVUW: struct { rd: IR, rs1: IR, rs2: IR },
+    REMW: struct { rd: IR, rs1: IR, rs2: IR },
+    REMUW: struct { rd: IR, rs1: IR, rs2: IR },
+
+    const Self = @This();
+
+    pub fn to_memory(self: Self, memory: []u8) error{OutOfSpace}!usize {
+        const vari = switch (self) {
+            .MULW => |i| (IF32{ .r = .{ .funct7 = 0b0000001, .funct3 = 0b000, .opcode = 0b0111011, .rd = i.rd.to_u5(), .rs1 = i.rs1.to_u5(), .rs2 = i.rs2.to_u5() } }),
+            .DIVW => |i| (IF32{ .r = .{ .funct7 = 0b0000001, .funct3 = 0b100, .opcode = 0b0111011, .rd = i.rd.to_u5(), .rs1 = i.rs1.to_u5(), .rs2 = i.rs2.to_u5() } }),
+            .DIVUW => |i| (IF32{ .r = .{ .funct7 = 0b0000001, .funct3 = 0b101, .opcode = 0b0111011, .rd = i.rd.to_u5(), .rs1 = i.rs1.to_u5(), .rs2 = i.rs2.to_u5() } }),
+            .REMW => |i| (IF32{ .r = .{ .funct7 = 0b0000001, .funct3 = 0b110, .opcode = 0b0111011, .rd = i.rd.to_u5(), .rs1 = i.rs1.to_u5(), .rs2 = i.rs2.to_u5() } }),
+            .REMUW => |i| (IF32{ .r = .{ .funct7 = 0b0000001, .funct3 = 0b111, .opcode = 0b0111011, .rd = i.rd.to_u5(), .rs1 = i.rs1.to_u5(), .rs2 = i.rs2.to_u5() } }),
+        };
+        return vari.to_varinstr().to_memory(memory);
+    }
+
+    pub fn from_memory(instr: base.VarInstr) ?Self {
+        return switch (instr) {
+            .x32 => |x32| {
+                const i = base.InstrFormatX32.from_u32(x32);
+
+                if (i.r.opcode != 0b0111011 or i.r.funct7 != 0b0000001) {
+                    return null;
+                }
+
+                return switch (i.r.funct3) {
+                    0b000 => Self{ .MULW = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                    0b100 => Self{ .DIVW = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                    0b101 => Self{ .DIVUW = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                    0b110 => Self{ .REMW = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                    0b111 => Self{ .REMUW = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                    else => null,
+                };
+            },
+            else => null,
+        };
+    }
+
+    pub fn len(self: Self) usize {
+        _ = self;
+        return 4;
+    }
+
+    pub fn write(self: Self, writer: std.io.AnyWriter) !void {
+        return switch (self) {
+            .MULW => |i| writer.print("MULW {s}, {s}, {s}\n", .{ i.rd.name(), i.rs1.name(), i.rs2.name() }),
+            .DIVW => |i| writer.print("DIVW {s}, {s}, {s}\n", .{ i.rd.name(), i.rs1.name(), i.rs2.name() }),
+            .DIVUW => |i| writer.print("DIVUW {s}, {s}, {s}\n", .{ i.rd.name(), i.rs1.name(), i.rs2.name() }),
+            .REMW => |i| writer.print("REMW {s}, {s}, {s}\n", .{ i.rd.name(), i.rs1.name(), i.rs2.name() }),
+            .REMUW => |i| writer.print("REMUW {s}, {s}, {s}\n", .{ i.rd.name(), i.rs1.name(), i.rs2.name() }),
+        };
+    }
+
+    pub fn used_grs(self: Self) [3]IR {
+        return switch (self) {
+            .MULW => |i| .{ i.rd, i.rs1, i.rs2 },
+            .DIVW => |i| .{ i.rd, i.rs1, i.rs2 },
+            .DIVUW => |i| .{ i.rd, i.rs1, i.rs2 },
+            .REMW => |i| .{ i.rd, i.rs1, i.rs2 },
+            .REMUW => |i| .{ i.rd, i.rs1, i.rs2 },
+        };
+    }
+};
+
 pub const Ziscr = union(enum) {
     CSRRW: struct { rd: IR, rs1: IR, csr: u12 },
     CSRRS: struct { rd: IR, rs1: IR, csr: u12 },
@@ -1022,6 +1173,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
         .X32 => union(enum) {
             rv32i: RV32I,
             z_iscr: Ziscr,
+            rv32m: RV32M,
 
             const Self = @This();
 
@@ -1029,6 +1181,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                 return switch (self) {
                     .rv32i => |i| i.to_memory(memory),
                     .z_iscr => |i| i.to_memory(memory),
+                    .rv32m => |i| i.to_memory(memory),
                 };
             }
 
@@ -1040,6 +1193,9 @@ pub fn build_asm(comptime arch: base.Arch) type {
                 if (Ziscr.from_memory(v)) |i| {
                     return .{ .z_iscr = i };
                 }
+                if (RV32M.from_memory(v)) |i| {
+                    return .{ .rv32m = i };
+                }
 
                 v.debug();
                 return error.Unimplemented;
@@ -1049,6 +1205,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                 return switch (self) {
                     .rv32i => |i| i.len(),
                     .z_iscr => |i| i.len(),
+                    .rv32m => |i| i.len(),
                 };
             }
 
@@ -1056,6 +1213,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                 return switch (self) {
                     .rv32i => |i| i.write(writer),
                     .z_iscr => |i| i.write(writer),
+                    .rv32m => |i| i.write(writer),
                 };
             }
 
@@ -1063,6 +1221,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                 return switch (self) {
                     .rv32i => |i| i.used_grs(),
                     .z_iscr => |i| i.used_grs(),
+                    .rv32m => |i| i.used_grs(),
                 };
             }
         },
@@ -1070,7 +1229,9 @@ pub fn build_asm(comptime arch: base.Arch) type {
             rv32i: RV32I,
             rv64i: RV64I,
             z_iscr: Ziscr,
+            rv32m: RV32M,
             rv32c: RV32C,
+            rv64m: RV64M,
             rv64c: RV64C,
 
             const Self = @This();
@@ -1080,6 +1241,8 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv32i => |i| i.to_memory(memory),
                     .rv64i => |i| i.to_memory(memory),
                     .z_iscr => |i| i.to_memory(memory),
+                    .rv32m => |i| i.to_memory(memory),
+                    .rv64m => |i| i.to_memory(memory),
                     .rv32c => |i| i.to_memory(memory),
                     .rv64c => |i| i.to_memory(memory),
                 };
@@ -1095,6 +1258,12 @@ pub fn build_asm(comptime arch: base.Arch) type {
                 }
                 if (Ziscr.from_memory(v)) |i| {
                     return .{ .z_iscr = i };
+                }
+                if (RV64M.from_memory(v)) |i| {
+                    return .{ .rv64m = i };
+                }
+                if (RV32M.from_memory(v)) |i| {
+                    return .{ .rv32m = i };
                 }
                 if (RV64C.from_memory(v)) |i| {
                     return .{ .rv64c = i };
@@ -1112,6 +1281,8 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv32i => |i| i.len(),
                     .rv64i => |i| i.len(),
                     .z_iscr => |i| i.len(),
+                    .rv32m => |i| i.len(),
+                    .rv64m => |i| i.len(),
                     .rv32c => |i| i.len(),
                     .rv64c => |i| i.len(),
                 };
@@ -1122,6 +1293,8 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv32i => |i| i.write(writer),
                     .rv64i => |i| i.write(writer),
                     .z_iscr => |i| i.write(writer),
+                    .rv32m => |i| i.write(writer),
+                    .rv64m => |i| i.write(writer),
                     .rv32c => |i| i.write(writer),
                     .rv64c => |i| i.write(writer),
                 };
@@ -1132,6 +1305,8 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv32i => |i| i.used_grs(),
                     .rv64i => |i| i.used_grs(),
                     .z_iscr => |i| i.used_grs(),
+                    .rv32m => |i| i.used_grs(),
+                    .rv64m => |i| i.used_grs(),
                     .rv32c => |i| i.used_grs(),
                     .rv64c => |i| i.used_grs(),
                 };
