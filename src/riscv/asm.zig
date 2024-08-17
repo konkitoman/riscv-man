@@ -944,30 +944,25 @@ pub const RV32C = union(enum) {
                     0b01 => switch (i.ci.funct3) {
                         0b001 => .{ .C_JAL = .{ .imm = i.cj.target } },
                         0b000 => .{ .C_ADDI = .{ .imm = cast(i6, (s(u6, i.ci.imm_12) << 5) | s(u6, i.ci.imm_2_6)), .rd = IRf(i.ci.rd) } },
-                        0b010 => .{ .C_LI = .{ .imm = cast(i6, (s(u6, i.ci.imm_12) >> 5) | s(u6, i.ci.imm_2_6)), .rd = IRf(i.ci.rd) } },
+                        0b010 => .{ .C_LI = .{ .imm = cast(i6, (s(u6, i.ci.imm_12) << 5) | s(u6, i.ci.imm_2_6)), .rd = IRf(i.ci.rd) } },
                         0b011 => if (i.ci.rd == 2)
-                            Self{ .C_ADDI16SP = .{ .imm = cast(i6, (s(u6, i.ci.imm_12) >> 5) | s(u6, i.ci.imm_2_6)) } }
+                            Self{ .C_ADDI16SP = .{ .imm = cast(i6, (s(u6, i.ci.imm_12) << 5) | s(u6, i.ci.imm_2_6)) } }
                         else
-                            .{ .C_LUI = .{ .imm = cast(i6, (s(u6, i.ci.imm_12) >> 5) | s(u6, i.ci.imm_2_6)), .rd = IRf(i.ci.rd) } },
-                        0b100 => if (i.ci.rd == 0)
-                            if (i.ci.imm_2_6 == 0)
-                                Self.C_EBREAK
-                            else switch (t(u2, i.cb.offset2)) {
-                                0b00 => Self{ .C_SRLI = .{ .shamt = (s(u6, i.ci.imm_12) << 5) | s(u6, i.cb.offset1), .rd = PIRf(i.cb.prd) } },
-                                0b01 => Self{ .C_SRAI = .{ .shamt = (s(u6, i.ci.imm_12) << 5) | s(u6, i.cb.offset1), .rd = PIRf(i.cb.prd) } },
-                                0b10 => Self{ .C_ANDI = .{ .imm = cast(i6, (s(u6, i.ci.imm_12) << 5) | s(u6, i.cb.offset1)), .rd = PIRf(i.cb.prd) } },
-                                0b11 => if (i.ci.imm_12 == 0)
-                                    switch (i.ca.funct2) {
-                                        0b00 => Self{ .C_SUB = .{ .rd = PIRf(i.ca.prd), .rs2 = PIRf(i.ca.prs2) } },
-                                        0b01 => Self{ .C_XOR = .{ .rd = PIRf(i.ca.prd), .rs2 = PIRf(i.ca.prs2) } },
-                                        0b10 => Self{ .C_OR = .{ .rd = PIRf(i.ca.prd), .rs2 = PIRf(i.ca.prs2) } },
-                                        0b11 => Self{ .C_AND = .{ .rd = PIRf(i.ca.prd), .rs2 = PIRf(i.ca.prs2) } },
-                                    }
-                                else
-                                    null,
-                            }
-                        else
-                            null,
+                            .{ .C_LUI = .{ .imm = cast(i6, (s(u6, i.ci.imm_12) << 5) | s(u6, i.ci.imm_2_6)), .rd = IRf(i.ci.rd) } },
+                        0b100 => switch (t(u2, i.cb.offset2)) {
+                            0b00 => Self{ .C_SRLI = .{ .shamt = (s(u6, i.ci.imm_12) << 5) | s(u6, i.cb.offset1), .rd = PIRf(i.cb.prd) } },
+                            0b01 => Self{ .C_SRAI = .{ .shamt = (s(u6, i.ci.imm_12) << 5) | s(u6, i.cb.offset1), .rd = PIRf(i.cb.prd) } },
+                            0b10 => Self{ .C_ANDI = .{ .imm = cast(i6, (s(u6, i.ci.imm_12) << 5) | s(u6, i.cb.offset1)), .rd = PIRf(i.cb.prd) } },
+                            0b11 => if (i.ci.imm_12 == 0)
+                                switch (i.ca.funct2) {
+                                    0b00 => Self{ .C_SUB = .{ .rd = PIRf(i.ca.prd), .rs2 = PIRf(i.ca.prs2) } },
+                                    0b01 => Self{ .C_XOR = .{ .rd = PIRf(i.ca.prd), .rs2 = PIRf(i.ca.prs2) } },
+                                    0b10 => Self{ .C_OR = .{ .rd = PIRf(i.ca.prd), .rs2 = PIRf(i.ca.prs2) } },
+                                    0b11 => Self{ .C_AND = .{ .rd = PIRf(i.ca.prd), .rs2 = PIRf(i.ca.prs2) } },
+                                }
+                            else
+                                null,
+                        },
                         0b101 => .{ .C_J = .{ .imm = i.cj.target } },
                         0b110 => .{ .C_BEQZ = .{ .imm = cast(i8, (s(u8, i.cb.offset2) << 5) | s(u8, i.cb.offset1)), .rs1 = PIRf(i.cb.prd) } },
                         0b111 => .{ .C_BNEZ = .{ .imm = cast(i8, (s(u8, i.cb.offset2) << 5) | s(u8, i.cb.offset1)), .rs1 = PIRf(i.cb.prd) } },
@@ -983,6 +978,8 @@ pub const RV32C = union(enum) {
                                 Self{ .C_MV = .{ .rd = IRf(i.cr.rd), .rs2 = IRf(i.cr.rs2) } },
                             1 => if (i.cr.rd == 0)
                                 Self{ .C_JALR = .{ .rs1 = IRf(i.cr.rs2) } }
+                            else if (i.cr.rd == 0 and i.cr.rs2 == 0)
+                                Self.C_EBREAK
                             else
                                 Self{ .C_ADD = .{ .rd = IRf(i.cr.rd), .rs2 = IRf(i.cr.rs2) } },
                         },
@@ -1113,10 +1110,15 @@ pub const RV64C = union(enum) {
                     },
                     0b01 => switch (i.ca.funct3) {
                         0b001 => Self{ .C_ADDIW = .{ .imm = cast(i6, (s(u6, i.ci.imm_12) << 5) + s(u6, i.ci.imm_2_6)), .rd = IRf(i.ci.rd) } },
-                        0b100 => switch (i.ca.funct2) {
-                            0b00 => .{ .C_SUBW = .{ .rd = PIRf(i.ca.prd), .rs2 = PIRf(i.ca.prs2) } },
-                            0b01 => .{ .C_ADDW = .{ .rd = PIRf(i.ca.prd), .rs2 = PIRf(i.ca.prs2) } },
-                            else => null,
+                        0b100 => switch (i.ci.imm_12) {
+                            0 => switch (t(u2, i.cb.funct3 >> 2)) {
+                                else => null,
+                            },
+                            1 => switch (i.ca.funct2) {
+                                0b00 => .{ .C_SUBW = .{ .rd = PIRf(i.ca.prd), .rs2 = PIRf(i.ca.prs2) } },
+                                0b01 => .{ .C_ADDW = .{ .rd = PIRf(i.ca.prd), .rs2 = PIRf(i.ca.prs2) } },
+                                else => null,
+                            },
                         },
                         else => null,
                     },
@@ -1141,15 +1143,15 @@ pub const RV64C = union(enum) {
 
     pub fn write(self: Self, writer: std.io.AnyWriter) !void {
         return switch (self) {
-            .C_LDSP => |i| writer.print("LDSP {s}, 0x{x}\n", .{ i.rd.name(), i.uimm }),
-            .C_FLDSP => |i| writer.print("FLDSP {s}, 0x{x}\n", .{ i.rd.name(), i.uimm }),
-            .C_SDSP => |i| writer.print("SDSP {s}, 0x{x}\n", .{ i.rd.name(), i.uimm }),
-            .C_FSDSP => |i| writer.print("FSDSP {s}, 0x{x}\n", .{ i.rd.name(), i.uimm }),
-            .C_LD => |i| writer.print("LD {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), i.uimm }),
-            .C_FLD => |i| writer.print("FLD {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), i.uimm }),
-            .C_ADDIW => |i| writer.print("ADDIW {s}, {x}\n", .{ i.rd.name(), i.imm }),
-            .C_ADDW => |i| writer.print("ADDW {s}, {s}\n", .{ i.rd.name(), i.rs2.name() }),
-            .C_SUBW => |i| writer.print("SUBW {s}, {s}\n", .{ i.rd.name(), i.rs2.name() }),
+            .C_LDSP => |i| writer.print("C_LDSP {s}, 0x{x}\n", .{ i.rd.name(), i.uimm }),
+            .C_FLDSP => |i| writer.print("C_FLDSP {s}, 0x{x}\n", .{ i.rd.name(), i.uimm }),
+            .C_SDSP => |i| writer.print("C_SDSP {s}, 0x{x}\n", .{ i.rd.name(), i.uimm }),
+            .C_FSDSP => |i| writer.print("C_FSDSP {s}, 0x{x}\n", .{ i.rd.name(), i.uimm }),
+            .C_LD => |i| writer.print("C_LD {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), i.uimm }),
+            .C_FLD => |i| writer.print("C_FLD {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), i.uimm }),
+            .C_ADDIW => |i| writer.print("C_ADDIW {s}, {x}\n", .{ i.rd.name(), i.imm }),
+            .C_ADDW => |i| writer.print("C_ADDW {s}, {s}\n", .{ i.rd.name(), i.rs2.name() }),
+            .C_SUBW => |i| writer.print("C_SUBW {s}, {s}\n", .{ i.rd.name(), i.rs2.name() }),
         };
     }
 
@@ -1174,6 +1176,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
             rv32i: RV32I,
             z_iscr: Ziscr,
             rv32m: RV32M,
+            rv32c: RV32C,
 
             const Self = @This();
 
@@ -1182,6 +1185,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv32i => |i| i.to_memory(memory),
                     .z_iscr => |i| i.to_memory(memory),
                     .rv32m => |i| i.to_memory(memory),
+                    .rv32c => |i| i.to_memory(memory),
                 };
             }
 
@@ -1196,6 +1200,9 @@ pub fn build_asm(comptime arch: base.Arch) type {
                 if (RV32M.from_memory(v)) |i| {
                     return .{ .rv32m = i };
                 }
+                if (RV32C.from_memory(v)) |i| {
+                    return .{ .rv32c = i };
+                }
 
                 v.debug();
                 return error.Unimplemented;
@@ -1206,6 +1213,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv32i => |i| i.len(),
                     .z_iscr => |i| i.len(),
                     .rv32m => |i| i.len(),
+                    .rv32c => |i| i.len(),
                 };
             }
 
@@ -1214,6 +1222,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv32i => |i| i.write(writer),
                     .z_iscr => |i| i.write(writer),
                     .rv32m => |i| i.write(writer),
+                    .rv32c => |i| i.write(writer),
                 };
             }
 
@@ -1222,6 +1231,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv32i => |i| i.used_grs(),
                     .z_iscr => |i| i.used_grs(),
                     .rv32m => |i| i.used_grs(),
+                    .rv32c => |i| i.used_grs(),
                 };
             }
         },
