@@ -61,7 +61,7 @@ pub fn main() !void {
                 riscv.buildCPU(.X32, 1);
             const eei = build(CPU);
 
-            var cpu = CPU.init(gpa.allocator(), &.{}, .{ .ecall = eei.ecall });
+            var cpu = try CPU.init(gpa.allocator(), &CPU.CSRSMachine.DEFAULT, .{ .ecall = eei.ecall });
             defer cpu.deinit();
 
             elf.load(CPU, &cpu, program_path) catch |err| {
@@ -71,13 +71,14 @@ pub fn main() !void {
 
             while (cpu.step()) {} else |err| {
                 print("Exited with: {}\n", .{err});
+                return err;
             }
         },
         64 => {
             const CPU = riscv.buildCPU(.X64, 1);
             const eei = build(CPU);
 
-            var cpu = CPU.init(gpa.allocator(), &.{}, .{ .ecall = eei.ecall });
+            var cpu = try CPU.init(gpa.allocator(), &CPU.CSRSMachine.DEFAULT, .{ .ecall = eei.ecall });
             defer cpu.deinit();
 
             elf.load(CPU, &cpu, program_path) catch |err| {
@@ -114,6 +115,7 @@ pub fn main() !void {
                 }
             } else |err| {
                 print("Exited with: {}\n", .{err});
+                return err;
             }
         },
         else => {

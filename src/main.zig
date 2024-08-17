@@ -12,7 +12,7 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
-    var cpu = CPU.init(gpa.allocator(), &.{}, .{});
+    var cpu = try CPU.init(gpa.allocator(), &CPU.CSRSMachine.DEFAULT, .{});
     defer cpu.deinit();
 
     try elf.load(CPU, &cpu, "xv6/kernel/kernel");
