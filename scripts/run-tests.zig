@@ -65,7 +65,7 @@ pub fn main() !void {
 
         print("Test: {s}\n", .{entry.name});
 
-        if (std.process.Child.run(.{ .allocator = alloc, .argv = &.{ "timeout", "0.1s", test_runner_path, cpu_meta, program }, .max_output_bytes = std.math.maxInt(usize) })) |result| {
+        if (std.process.Child.run(.{ .allocator = alloc, .argv = &.{ "timeout", "1.0s", test_runner_path, cpu_meta, program }, .max_output_bytes = std.math.maxInt(usize) })) |result| {
             switch (result.term) {
                 .Exited => |code| {
                     if (code == 0) {

@@ -822,7 +822,7 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                     0b010 => {
                         const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
                         const per = self.has_csr_permisions(csr_addr);
-                        if (instr.i.rd == 0 and per.read()) {
+                        if (instr.i.rd != 0 and per.read()) {
                             self.g_regs[instr.i.rd] = try self.csrs[csr_addr].read();
                         }
                         if (instr.i.rs1 != 0 and per.write()) {
@@ -833,7 +833,7 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                     0b011 => {
                         const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
                         const per = self.has_csr_permisions(csr_addr);
-                        if (instr.i.rd == 0 and per.read()) {
+                        if (instr.i.rd != 0 and per.read()) {
                             self.g_regs[instr.i.rd] = try self.csrs[csr_addr].read();
                         }
                         if (instr.i.rs1 != 0 and per.write()) {
@@ -869,7 +869,7 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                         const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
                         const per = self.has_csr_permisions(csr_addr);
                         const value: uarch = @as(u5, @bitCast(instr.i.rs1));
-                        if (instr.i.rd == 0 and per.read()) {
+                        if (instr.i.rd != 0 and per.read()) {
                             self.g_regs[instr.i.rd] = try self.csrs[csr_addr].read();
                         }
                         if (value != 0 and per.write()) {
@@ -1079,11 +1079,11 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
             }
 
             for (self.memory_maps.items) |map| {
-                if (memory_map.end <= map.end and memory_map.start <= map.start) {
+                if (memory_map.end >= map.start and memory_map.end <= map.end) {
                     return error.OverlappingMemory;
                 }
 
-                if (memory_map.to_end <= map.to_end and memory_map.to_start <= map.to_start) {
+                if (memory_map.to_end >= map.to_start and memory_map.to_end <= map.to_end) {
                     return error.OverlappingVirtualMemory;
                 }
             }
