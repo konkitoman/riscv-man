@@ -1041,3 +1041,46 @@ pub const X64PMPCFG = packed struct {
     pmpcfg6: PMPCFG,
     pmpcfg7: PMPCFG,
 };
+
+pub const X32MSTATUS = packed struct {
+    WPRI0: u1,
+    SIE: u1,
+    WPRI1: u1,
+    MIE: u1,
+    WPRI2: u1,
+    SPIE: u1,
+    UBE: u1,
+    MPIE: u1,
+    SPP: u1,
+    VS: u2,
+    MPP: u2,
+    FS: u2,
+    XS: u2,
+    MPRV: u1,
+    SUM: u1,
+    MXR: u1,
+    TVM: u1,
+    TW: u1,
+    TSR: u1,
+    SPELP: u1,
+    SDT: u1,
+    WPRI3: u6,
+    SD: u1,
+};
+
+pub const X32MSTATUSH = packed struct {
+    WPRI0: u4,
+    SBE: u1,
+    MBE: u1,
+    GVA: u1,
+    MPV: u1,
+    WPRI1: u1,
+    MPELP: u1,
+    MDT: u1,
+    WPRI2: u21,
+};
+
+pub const X32MTVEC = packed struct {
+    mode: u2,
+    base: u30,
+};

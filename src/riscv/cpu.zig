@@ -200,13 +200,30 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
             }
 
             fn trap(self: *@This(), mode: HartMode, cause: uarch) void {
-                if (arch != .X64) @panic("Trap is only implemented of x64");
-                switch (mode) {
-                    .U => {},
-                    .S => {},
-                    .H => {},
-                    .M => {
-                        var mstatus = @as(base.X64MStatus, @bitCast(self.csrs[CSRAddr.mstatus.to_u12()]));
+                switch (arch) {
+                    .X32 => {
+                        var mstatus: base.X32MSTATUS = @bitCast(self.csrs[CSRAddr.mstatus.to_u12()]);
+                        mstatus.MPP = self.mode.to_u2();
+                        self.mode = mode;
+                        self.csrs[CSRAddr.mepc.to_u12()] = self.pc;
+                        self.csrs[CSRAddr.mcause.to_u12()] = cause;
+                        const mtvec: base.X32MTVEC = @bitCast(self.csrs[CSRAddr.mtvec.to_u12()]);
+                        switch (mtvec.mode) {
+                            0 => { // DIRECT
+                                self.pc = @as(u32, mtvec.base) << 2;
+                            },
+                            1 => { // VECTORED
+                                // TODO: Implement VECTORED
+                                @panic("VECTORED not implemented!");
+                                // self.pc = (mtvec ^ (mtvec & 0b11)) + (4 * (cause & 0xffffffff));
+                            },
+                            else => {
+                                @panic("Unknown MTVEC Mode!");
+                            },
+                        }
+                    },
+                    .X64 => {
+                        var mstatus: base.X64MStatus = @bitCast(self.csrs[CSRAddr.mstatus.to_u12()]);
                         mstatus.MPP = self.mode.to_u2();
                         self.csrs[CSRAddr.mstatus.to_u12()] = @bitCast(mstatus);
                         self.mode = mode;
@@ -886,7 +903,6 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                 switch (instr.i.funct3) {
                     0b000 => switch (instr.i.imm_11_0) {
                         0 => {
-                            if (arch != .X64) @panic("MCALL is implemented for x64 only!");
                             switch (self.mode) {
                                 .U => {
                                     self.trap(.M, 8); // Environment call from U-mode
@@ -911,17 +927,25 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                                 return;
                             }
                             self.pc = self.csrs[CSRAddr.mepc.to_u12()];
-                            if (arch == .X64) {
-                                var mstatus = @as(base.X64MStatus, @bitCast(self.csrs[CSRAddr.mstatus.to_u12()]));
-                                if (arch != .X64) @panic("MRET is implemented for x64 only!");
-                                self.csrs[CSRAddr.mie.to_u12()] = mstatus.MIE;
-                                self.mode = HartMode.from_u2(mstatus.MPP);
-                                mstatus.MIE = 1;
-                                mstatus.MPP = HartMode.U.to_u2();
-                                self.csrs[CSRAddr.mstatus.to_u12()] = @bitCast(mstatus);
-                                return;
+                            switch (arch) {
+                                .X32 => {
+                                    var mstatus: base.X32MSTATUS = @bitCast(self.csrs[CSRAddr.mstatus.to_u12()]);
+                                    self.csrs[CSRAddr.mie.to_u12()] = mstatus.MIE;
+                                    self.mode = HartMode.from_u2(mstatus.MPP);
+                                    mstatus.MIE = 1;
+                                    mstatus.MPP = HartMode.U.to_u2();
+                                    self.csrs[CSRAddr.mstatus.to_u12()] = @bitCast(mstatus);
+                                },
+                                .X64 => {
+                                    var mstatus = @as(base.X64MStatus, @bitCast(self.csrs[CSRAddr.mstatus.to_u12()]));
+                                    self.csrs[CSRAddr.mie.to_u12()] = mstatus.MIE;
+                                    self.mode = HartMode.from_u2(mstatus.MPP);
+                                    mstatus.MIE = 1;
+                                    mstatus.MPP = HartMode.U.to_u2();
+                                    self.csrs[CSRAddr.mstatus.to_u12()] = @bitCast(mstatus);
+                                },
                             }
-                            @panic("TODO: MRET Not implemented");
+                            return;
                         },
                         0b011100000010 => { // MNRET
                             self.pc = self.csrs[CSRAddr.mnepc.to_u12()];
