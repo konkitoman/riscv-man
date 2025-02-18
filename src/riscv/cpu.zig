@@ -9,6 +9,7 @@ pub const InstrFX16 = base.InstrFormatX16;
 pub const InstrFX32 = base.InstrFormatX32;
 pub const CSRAddr = base.CSRAddr;
 pub const CSRAddrU = base.CSRAddrU;
+pub const rearrange = base.rearrange;
 
 const print = std.debug.print;
 
@@ -42,48 +43,6 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
 
         pub const UARCH = uarch;
 
-        pub const EEI = struct {
-            ecall: *const fn (hart: *Hart, cpu: *CPU) void = default_ecall,
-
-            pub fn default_ecall(hart: *Hart, cpu: *CPU) void {
-                print("ECALL not implemented!\n", .{});
-                _ = hart;
-                _ = cpu;
-            }
-        };
-
-        pub const CSR = struct {
-            data: uarch,
-            read: *const fn (self: *CSR) uarch,
-            write: *const fn (self: *CSR, value: uarch) void,
-        };
-
-        pub const CSRU = struct {
-            o_csr: ?CSR,
-
-            pub fn read(self: *@This()) !uarch {
-                return if (self.o_csr) |*csr| csr.read(csr) else {
-                    return error.NotImplemented;
-                };
-            }
-
-            pub fn write(self: *@This(), value: uarch) !void {
-                if (self.o_csr) |*csr| csr.write(csr, value) else {
-                    return error.NotImplemented;
-                }
-            }
-
-            pub fn set(self: *@This(), value: uarch) !void {
-                const tmp = try self.read();
-                try self.write(tmp | value);
-            }
-
-            pub fn clear(self: *@This(), value: uarch) !void {
-                const tmp = try self.read();
-                try self.write(tmp ^ (tmp & value));
-            }
-        };
-
         pub const HartMode = enum(u2) {
             U = 0,
             S = 1,
@@ -96,6 +55,15 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
 
             fn from_u2(value: u2) @This() {
                 return @enumFromInt(value);
+            }
+
+            pub fn name(self: @This()) []const u8 {
+                return switch (self) {
+                    .U => "U",
+                    .S => "S",
+                    .H => "H",
+                    .M => "M",
+                };
             }
         };
 
@@ -125,7 +93,7 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
         pub const Hart = struct {
             g_regs: [32]uarch,
             pc: uarch,
-            csrs: [4096]CSRU,
+            csrs: [4096]uarch,
             mode: HartMode,
 
             pub fn step(self: *Hart, cpu: *CPU) !void {
@@ -142,47 +110,49 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                         switch (instr.opcode) {
                             0b00 => switch (instr.cl.funct3) {
                                 0b000 => self.c_addi4spn(instr),
+                                0b010 => try self.c_lw(instr, cpu),
+                                0b110 => try self.c_sw(instr, cpu),
+                                0b111 => try self.c_sd(instr, cpu),
                                 else => {
                                     var_instr.debug();
                                     return error.NotImplemented;
                                 },
                             },
-                            0b01 => if (instr.ci.rd != 0)
-                                switch (instr.ci.funct3) {
-                                    0b000 => self.c_addi(instr),
-                                    0b001 => self.c_addiw(instr),
-                                    0b010 => self.c_li(instr),
-                                    0b011 => self.c_lui(instr),
-                                    0b100 => switch (@as(u2, @truncate(instr.cb.offset2))) {
-                                        0b00 => self.c_srli(instr),
-                                        0b11 => if (instr.ci.imm_12 == 0)
-                                            switch (instr.ca.funct2) {
-                                                0b10 => self.c_or(instr),
-                                                0b11 => self.c_and(instr),
-                                                else => {
-                                                    var_instr.debug();
-                                                    return error.NotImplemented;
-                                                },
-                                            }
-                                        else {
-                                            var_instr.debug();
-                                            return error.NotImplemented;
-                                        },
-                                        else => {
-                                            var_instr.debug();
-                                            return error.NotImplemented;
-                                        },
+                            0b01 => switch (instr.ci.funct3) {
+                                0b000 => if (instr.ci.rd != 0) self.c_addi(instr),
+                                0b001 => if (instr.ci.rd != 0) self.c_addiw(instr),
+                                0b010 => if (instr.ci.rd != 0) self.c_li(instr),
+                                0b011 => if (instr.ci.rd != 0) self.c_lui(instr),
+                                0b100 => if (instr.ci.rd != 0) switch (@as(u2, @truncate(instr.cb.offset2))) {
+                                    0b00 => self.c_srli(instr),
+                                    0b10 => self.c_andi(instr),
+                                    0b11 => if (instr.ci.imm_12 == 0)
+                                        switch (instr.ca.funct2) {
+                                            0b10 => self.c_or(instr),
+                                            0b11 => self.c_and(instr),
+                                            else => {
+                                                var_instr.debug();
+                                                return error.NotImplemented;
+                                            },
+                                        }
+                                    else {
+                                        var_instr.debug();
+                                        return error.NotImplemented;
                                     },
                                     else => {
                                         var_instr.debug();
                                         return error.NotImplemented;
                                     },
                                 },
+                                0b101 => self.c_j(instr),
+                                0b110 => self.c_beqz(instr),
+                                0b111 => self.c_bnez(instr),
+                            },
                             0b10 => switch (instr.ci.funct3) {
                                 0b000 => self.c_slli(instr),
                                 0b011 => try self.c_ldsp(instr, cpu),
                                 0b100 => switch (instr.ci.imm_12) {
-                                    0 => try self.c_jr(instr),
+                                    0 => try self.c_jr_mv(instr),
                                     1 => self.c_add(instr),
                                 },
                                 0b111 => try self.c_sdsp(instr, cpu),
@@ -203,11 +173,12 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                         switch (instr.opcode) {
                             0b0110111 => self.lui(instr),
                             0b0010111 => self.auipc(instr),
+                            0b0101111 => try self.amo(instr, cpu),
                             0b1101111 => self.jal(instr),
                             0b1100111 => self.jalr(instr),
                             0b1100011 => self.branch(instr),
                             0b0000011 => try self.load(instr, cpu),
-                            0b0100011 => try self.save(instr, cpu),
+                            0b0100011 => try self.store(instr, cpu),
                             0b0010011 => self.op_imm(instr),
                             0b0011011 => self.op_imm_32(instr),
                             0b0110011 => try self.op(instr),
@@ -226,6 +197,37 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                         return error.NotImplemented;
                     },
                 } else |e| print("When reading VarInstr at {x}, an error acured: {}\n", .{ self.pc, e });
+            }
+
+            fn trap(self: *@This(), mode: HartMode, cause: uarch) void {
+                if (arch != .X64) @panic("Trap is only implemented of x64");
+                switch (mode) {
+                    .U => {},
+                    .S => {},
+                    .H => {},
+                    .M => {
+                        var mstatus = @as(base.X64MStatus, @bitCast(self.csrs[CSRAddr.mstatus.to_u12()]));
+                        mstatus.MPP = self.mode.to_u2();
+                        self.csrs[CSRAddr.mstatus.to_u12()] = @bitCast(mstatus);
+                        self.mode = mode;
+                        self.csrs[CSRAddr.mepc.to_u12()] = self.pc;
+                        self.csrs[CSRAddr.mcause.to_u12()] = cause;
+                        const mtvec = @as(base.X64MTVEC, @bitCast(self.csrs[CSRAddr.mtvec.to_u12()]));
+                        switch (mtvec.mode) {
+                            0 => { // DIRECT
+                                self.pc = @as(u64, mtvec.base) << 2;
+                            },
+                            1 => { // VECTORED
+                                // TODO: Implement VECTORED
+                                @panic("VECTORED not implemented!");
+                                // self.pc = (mtvec ^ (mtvec & 0b11)) + (4 * (cause & 0xffffffff));
+                            },
+                            else => {
+                                @panic("Unknown MTVEC Mode!");
+                            },
+                        }
+                    },
+                }
             }
 
             fn has_csr_permisions(self: @This(), addr: u12) Permisions {
@@ -354,6 +356,90 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                 return .None;
             }
 
+            fn csr_store(self: *@This(), csr_addr: u12, value: uarch) void {
+                switch (csr_addr) {
+                    CSRAddr.mtvec.to_u12(), CSRAddr.mepc.to_u12(), CSRAddr.medeleg.to_u12(), CSRAddr.mideleg.to_u12() => self.csrs[csr_addr] = value,
+                    CSRAddr.mstatus.to_u12() => {
+                        if (arch == .X64) {
+                            const data = @as(base.X64MStatus, @bitCast(value));
+                            print("{}\n", .{data});
+                        }
+                        self.csrs[csr_addr] = value;
+                    },
+                    CSRAddr.pmpaddr0.to_u12() => {
+                        self.csrs[csr_addr] = value;
+                    },
+                    CSRAddr.sie.to_u12() => {
+                        self.csrs[CSRAddr.mie.to_u12()] = (self.csrs[CSRAddr.mie.to_u12()] & -%self.csrs[CSRAddr.mideleg.to_u12()]) | (value & self.csrs[CSRAddr.mideleg.to_u12()]);
+                    },
+                    CSRAddr.mie.to_u12() => {
+                        if (arch == .X64) {
+                            const data = @as(base.X64MIE, @bitCast(value));
+                            print("{}\n", .{data});
+                        }
+                        self.csrs[csr_addr] = value;
+                    },
+                    CSRAddr.mnstatus.to_u12() => {
+                        if (arch == .X64) {
+                            const data = @as(base.X64MNStatus, @bitCast(value));
+                            print("{}\n", .{data});
+                        }
+                        self.csrs[CSRAddr.mnstatus.to_u12()] = value;
+                    },
+                    CSRAddr.pmpcfg0.to_u12(), CSRAddr.pmpcfg2.to_u12(), CSRAddr.pmpcfg4.to_u12(), CSRAddr.pmpcfg6.to_u12(), CSRAddr.pmpcfg8.to_u12(), CSRAddr.pmpcfg10.to_u12(), CSRAddr.pmpcfg12.to_u12(), CSRAddr.pmpcfg14.to_u12() => {
+                        if (arch == .X64) {
+                            const data = @as(base.X64PMPCFG, @bitCast(value));
+                            print("{}\n", .{data});
+                        }
+
+                        self.csrs[csr_addr] = value;
+                    },
+                    else => {
+                        print("CSR_STORE: Unknown CSR\n", .{});
+                        @breakpoint();
+                        self.csrs[csr_addr] = value;
+                    },
+                }
+            }
+
+            fn csr_load(self: *@This(), csr_addr: u12) uarch {
+                const tmp = self.csrs[csr_addr];
+                switch (csr_addr) {
+                    CSRAddr.mhartid.to_u12(),
+                    CSRAddr.mstatus.to_u12(),
+                    CSRAddr.mepc.to_u12(),
+                    CSRAddr.medeleg.to_u12(),
+                    CSRAddr.mideleg.to_u12(),
+                    CSRAddr.mcause.to_u12(),
+                    => return tmp,
+                    CSRAddr.sie.to_u12() => return self.csrs[CSRAddr.mie.to_u12()] & self.csrs[CSRAddr.mideleg.to_u12()],
+                    else => {
+                        print("CSR_LOAD: Unknown CSR\n", .{});
+                        @breakpoint();
+                        return tmp;
+                    },
+                }
+            }
+
+            fn get_pmpcfg_from_paddri(self: @This(), pmpaddr_i: u6) u8 {
+                const div =
+                    switch (arch) {
+                    .X32 => 4,
+                    .X64 => 8,
+                };
+                const csr_offset_i = pmpaddr_i / div;
+                const seg = pmpaddr_i % div;
+
+                const csr_offset = switch (arch) {
+                    .X32 => csr_offset_i,
+                    .X64 => csr_offset_i * 2,
+                };
+
+                const csr_addr = CSRAddr.pmpcfg0.to_u12() + csr_offset;
+
+                return @truncate(self.csrs[csr_addr] >> (seg * 8));
+            }
+
             // RVI
 
             fn lui(self: *@This(), instr: InstrFX32) void {
@@ -375,7 +461,7 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
 
             fn jal(self: *@This(), instr: InstrFX32) void {
                 const pc = self.pc + 4;
-                self.pc = @as(uarch, @bitCast(@as(iarch, @bitCast(self.pc)) + (@as(iarch, instr.j.get_imm()) * 2)));
+                self.pc = @as(uarch, @bitCast(@as(iarch, @bitCast(self.pc)) + (@as(iarch, @as(i21, @bitCast(rearrange(u20, u21, instr.jimm.imm, &base.@"imm_20|10:1|11|19:12")))))));
                 if (instr.u.rd != 0) {
                     self.g_regs[instr.u.rd] = pc;
                 }
@@ -391,7 +477,7 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
             }
 
             fn branch(self: *@This(), instr: InstrFX32) void {
-                const offset = @as(iarch, instr.b.get_imm()) * 2;
+                const offset = @as(iarch, instr.b.get_imm());
                 switch (instr.b.funct3) {
                     0b000 => { // BEQ
                         if (self.g_regs[instr.b.rs1] == self.g_regs[instr.b.rs2]) {
@@ -489,8 +575,8 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                 self.pc += 4;
             }
 
-            fn save(self: *@This(), instr: InstrFX32, cpu: *CPU) !void {
-                const offset: uarch = @bitCast((@as(iarch, @bitCast(self.g_regs[instr.s.rs1])) + instr.s.get_imm()));
+            fn store(self: *@This(), instr: InstrFX32, cpu: *CPU) !void {
+                const offset: uarch = self.g_regs[instr.s.rs1] +% @as(uarch, @bitCast(@as(iarch, instr.s.get_imm())));
                 var buffer: [bits / 8]u8 = undefined;
                 std.mem.writeInt(uarch, &buffer, self.g_regs[instr.s.rs2], .little);
                 switch (instr.s.funct3) {
@@ -796,48 +882,102 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
             }
 
             fn system(self: *@This(), instr: InstrFX32, cpu: *CPU) !void {
+                _ = cpu;
                 switch (instr.i.funct3) {
                     0b000 => switch (instr.i.imm_11_0) {
-                        // ECALL
-                        0 => cpu.eei.ecall(self, cpu),
+                        0 => {
+                            if (arch != .X64) @panic("MCALL is implemented for x64 only!");
+                            switch (self.mode) {
+                                .U => {
+                                    self.trap(.M, 8); // Environment call from U-mode
+                                    return;
+                                },
+                                else => {
+                                    @panic("ECALL is not implemented!");
+                                },
+                            }
+                        },
                         1 => { // EBREAK
                             return error.Break;
                         },
+                        0b000100000010 => { // SRET
+                            self.pc = self.csrs[CSRAddr.sepc.to_u12()];
+                            @panic("TODO: SRET Not implemented!");
+                        },
+                        0b001100000010 => { // MRET
+                            if (self.mode != .M) {
+                                std.debug.print("MRET: HartMode is not M, is {s}\n", .{self.mode.name()});
+                                self.trap(.M, base.X64CAUSE_Illegal_instruction);
+                                return;
+                            }
+                            self.pc = self.csrs[CSRAddr.mepc.to_u12()];
+                            if (arch == .X64) {
+                                var mstatus = @as(base.X64MStatus, @bitCast(self.csrs[CSRAddr.mstatus.to_u12()]));
+                                if (arch != .X64) @panic("MRET is implemented for x64 only!");
+                                self.csrs[CSRAddr.mie.to_u12()] = mstatus.MIE;
+                                self.mode = HartMode.from_u2(mstatus.MPP);
+                                mstatus.MIE = 1;
+                                mstatus.MPP = HartMode.U.to_u2();
+                                self.csrs[CSRAddr.mstatus.to_u12()] = @bitCast(mstatus);
+                                return;
+                            }
+                            @panic("TODO: MRET Not implemented");
+                        },
+                        0b011100000010 => { // MNRET
+                            self.pc = self.csrs[CSRAddr.mnepc.to_u12()];
+                            @panic("TODO: MNRET Not implemented");
+                        },
                         else => {
                             print("Invalid SYSTEM call {b:0>12}\n", .{instr.i.imm_11_0});
+                            @panic("TODO: Not Implemented");
                         },
                     },
                     // CSRRW
                     0b001 => {
                         const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
                         const per = self.has_csr_permisions(csr_addr);
-                        if (instr.i.rd != 0 and per.read()) {
-                            self.g_regs[instr.i.rd] = try self.csrs[csr_addr].read();
+                        if (!(per.read() and per.write())) {
+                            print("No permissions of CSR", .{});
+                            self.trap(.M, base.X64CAUSE_Instruction_acces_falut);
+                            return;
                         }
-                        if (per.write()) {
-                            _ = try self.csrs[csr_addr].write(self.g_regs[instr.i.rs1]);
+                        if (instr.i.rd != 0) {
+                            self.g_regs[instr.i.rd] = self.csr_load(csr_addr);
                         }
+                        self.csr_store(csr_addr, self.g_regs[instr.i.rs1]);
                     },
                     // CSRRS
                     0b010 => {
                         const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
                         const per = self.has_csr_permisions(csr_addr);
-                        if (instr.i.rd != 0 and per.read()) {
-                            self.g_regs[instr.i.rd] = try self.csrs[csr_addr].read();
+                        const tmp = self.csr_load(csr_addr);
+                        if (!(per.read() and per.write())) {
+                            print("No permissions of CSR", .{});
+                            self.trap(.M, base.X64CAUSE_Instruction_acces_falut);
+                            return;
                         }
-                        if (instr.i.rs1 != 0 and per.write()) {
-                            _ = try self.csrs[csr_addr].set(self.g_regs[instr.i.rs1]);
+                        if (instr.i.rd != 0) {
+                            self.g_regs[instr.i.rd] = tmp;
+                        }
+                        if (instr.i.rs1 != 0) {
+                            self.csr_store(csr_addr, tmp & self.g_regs[instr.i.rs1]);
                         }
                     },
                     // CSRRC
                     0b011 => {
                         const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
                         const per = self.has_csr_permisions(csr_addr);
-                        if (instr.i.rd != 0 and per.read()) {
-                            self.g_regs[instr.i.rd] = try self.csrs[csr_addr].read();
+                        const tmp = self.csr_load(csr_addr);
+                        if (!(per.read() and per.write())) {
+                            print("No permissions of CSR", .{});
+                            self.trap(.M, base.X64CAUSE_Instruction_acces_falut);
+                            return;
                         }
-                        if (instr.i.rs1 != 0 and per.write()) {
-                            _ = try self.csrs[csr_addr].clear(self.g_regs[instr.i.rs1]);
+                        if (instr.i.rd != 0) {
+                            self.g_regs[instr.i.rd] = tmp;
+                        }
+                        if (instr.i.rs1 != 0) {
+                            self.csr_store(csr_addr, tmp ^ (self.g_regs[instr.i.rs1] & tmp));
                         }
                     },
                     // CSRRWI
@@ -845,23 +985,32 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                         const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
                         const per = self.has_csr_permisions(csr_addr);
                         const value: uarch = @as(u5, @bitCast(instr.i.rs1));
-                        if (instr.i.rd != 0 and per.read()) {
-                            self.g_regs[instr.i.rd] = try self.csrs[csr_addr].read();
+                        if (!(per.read() and per.write())) {
+                            print("No permissions of CSR\n", .{});
+                            self.trap(.M, base.X64CAUSE_Instruction_acces_falut);
+                            return;
                         }
-                        if (per.write()) {
-                            _ = try self.csrs[csr_addr].write(value);
+                        if (instr.i.rd != 0) {
+                            self.g_regs[instr.i.rd] = self.csr_load(csr_addr);
                         }
+                        self.csr_store(csr_addr, value);
                     },
                     // CSRRSI
                     0b110 => {
                         const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
                         const per = self.has_csr_permisions(csr_addr);
                         const value: uarch = @as(u5, @bitCast(instr.i.rs1));
-                        if (instr.i.rd == 0 and per.read()) {
-                            self.g_regs[instr.i.rd] = try self.csrs[csr_addr].read();
+                        const tmp = self.csr_load(csr_addr);
+                        if (!(per.read() and per.write())) {
+                            print("No permissions of CSR\n", .{});
+                            self.trap(.M, base.X64CAUSE_Instruction_acces_falut);
+                            return;
                         }
-                        if (value != 0 and per.write()) {
-                            _ = try self.csrs[csr_addr].set(value);
+                        if (instr.i.rd == 0) {
+                            self.g_regs[instr.i.rd] = tmp;
+                        }
+                        if (value != 0) {
+                            self.csr_store(csr_addr, tmp & value);
                         }
                     },
                     // CSRRCI
@@ -869,11 +1018,17 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                         const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
                         const per = self.has_csr_permisions(csr_addr);
                         const value: uarch = @as(u5, @bitCast(instr.i.rs1));
-                        if (instr.i.rd != 0 and per.read()) {
-                            self.g_regs[instr.i.rd] = try self.csrs[csr_addr].read();
+                        const tmp = self.csr_load(csr_addr);
+                        if (!(per.read() and per.write())) {
+                            print("No permissions of CSR\n", .{});
+                            self.trap(.M, base.X64CAUSE_Instruction_acces_falut);
+                            return;
                         }
-                        if (value != 0 and per.write()) {
-                            _ = try self.csrs[csr_addr].clear(value);
+                        if (instr.i.rd != 0) {
+                            self.g_regs[instr.i.rd] = tmp;
+                        }
+                        if (value != 0) {
+                            self.csr_store(csr_addr, tmp ^ (value & tmp));
                         }
                     },
                     else => {
@@ -886,10 +1041,35 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
 
             // END RVI
 
+            // RVA
+
+            fn amo(self: *@This(), instr: InstrFX32, cpu: *CPU) !void {
+                if (instr.r.funct3 == 0b010) {
+                    switch (instr.r.funct7 >> 2) {
+                        0b00001 => { // amoswap.w
+                            var buffer1: [4]u8 = undefined;
+                            var buffer2: [4]u8 = undefined;
+                            try cpu.vmemory_read_all(self.g_regs[instr.r.rs1], &buffer1);
+                            self.g_regs[instr.r.rd] = @bitCast(@as(iarch, std.mem.readInt(i32, &buffer1, .little)));
+                            try cpu.vmemory_read_all(self.g_regs[instr.r.rs2], &buffer2);
+                            try cpu.vmemory_write_all(self.g_regs[instr.r.rs1], &buffer2);
+                            try cpu.vmemory_write_all(self.g_regs[instr.r.rs2], &buffer1);
+                        },
+                        else => {},
+                    }
+                }
+
+                std.debug.print("Atomic instruction not implemented\n", .{});
+                instr.debug();
+                self.pc += 4;
+            }
+
+            // END RVA
+
             // RVC
 
             fn c_ldsp(self: *@This(), instr: InstrFX16, cpu: *CPU) !void {
-                const offset: uarch = (@as(u6, instr.ci.imm_12) << 5) | instr.ci.imm_2_6;
+                const offset: uarch = (@as(u9, instr.ci.imm_12) << 5) | rearrange(u5, u9, instr.ci.imm_2_6, &base.@"imm_4:3|8:6");
                 var buffer: [bits / 8]u8 = undefined;
                 switch (arch) {
                     .X32 => {
@@ -905,7 +1085,7 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
             }
 
             fn c_sdsp(self: *@This(), instr: InstrFX16, cpu: *CPU) !void {
-                const offset: uarch = instr.css.imm;
+                const offset: uarch = rearrange(u6, u9, instr.css.imm, &base.@"imm_5:3|8:6");
                 var buffer: [bits / 8]u8 = undefined;
                 std.mem.writeInt(uarch, &buffer, self.g_regs[instr.css.rs2], .little);
                 switch (arch) {
@@ -921,14 +1101,14 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
             }
 
             fn c_addi4spn(self: *@This(), instr: InstrFX16) void {
-                self.g_regs[instr.ciw.rd()] = self.g_regs[2] +% @as(uarch, instr.ciw.imm);
+                self.g_regs[instr.ciw.rd()] = self.g_regs[2] +% @as(uarch, rearrange(u8, u10, instr.ciw.imm, &base.@"imm_5:4|9:6|2|3"));
                 self.pc += 2;
             }
 
             fn c_addi(self: *@This(), instr: InstrFX16) void {
                 const imm = @as(iarch, @as(i6, @bitCast((@as(u6, instr.ci.imm_12) << 5) | @as(u6, instr.ci.imm_2_6))));
 
-                if (imm == 0) {
+                if (instr.ci.rd == 0) {
                     self.pc += 2;
                     return;
                 }
@@ -950,36 +1130,43 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
             }
 
             fn c_lui(self: *@This(), instr: InstrFX16) void {
-                const imm = @as(iarch, @as(i6, @bitCast((@as(u6, instr.ci.imm_12) << 5) | @as(u6, instr.ci.imm_2_6))));
+                if (instr.ci.rd == 0) {
+                    self.pc += 2;
+                    return;
+                }
+
                 if (instr.ci.rd == 2) {
-                    if (imm == 0) {
-                        self.pc += 2;
-                        return;
-                    }
-                    self.g_regs[2] +%= @as(uarch, @bitCast(imm * 16));
+                    self.g_regs[2] +%= @as(uarch, @bitCast(@as(iarch, @as(i10, @bitCast(rearrange(u5, u10, instr.ci.imm_2_6, &base.@"imm_4|6|8:7|5") | @as(u10, instr.ci.imm_12) << 9)))));
                 } else {
+                    const imm = @as(iarch, @as(i6, @bitCast((@as(u6, instr.ci.imm_12) << 5) | @as(u6, instr.ci.imm_2_6))));
                     self.g_regs[instr.ci.rd] = @as(uarch, @bitCast(imm)) << 12;
                 }
                 self.pc += 2;
             }
 
             fn c_li(self: *@This(), instr: InstrFX16) void {
-                const offset = @as(iarch, @as(i6, @bitCast((@as(u6, instr.ci.imm_12) << 5) | @as(u6, instr.ci.imm_2_6))));
-                self.g_regs[instr.ci.rd] = @bitCast(offset);
-                self.pc += 2;
-            }
-
-            fn c_jr(self: *@This(), instr: InstrFX16) !void {
-                if (instr.cr.rd == 0) {
-                    return error.NotImplemented;
-                } else {
-                    self.g_regs[instr.cr.rd] = self.g_regs[instr.cr.rs2];
+                if (instr.ci.rd != 0) {
+                    const offset = @as(iarch, @as(i6, @bitCast((@as(u6, instr.ci.imm_12) << 5) | @as(u6, instr.ci.imm_2_6))));
+                    self.g_regs[instr.ci.rd] = @bitCast(offset);
                 }
                 self.pc += 2;
             }
 
+            fn c_jr_mv(self: *@This(), instr: InstrFX16) !void {
+                if (instr.cr.rs2 == 0) {
+                    self.pc = self.g_regs[instr.cr.rd];
+                } else {
+                    if (instr.cr.rd != 0) {
+                        self.g_regs[instr.cr.rd] = self.g_regs[instr.cr.rs2];
+                    }
+                    self.pc += 2;
+                }
+            }
+
             fn c_add(self: *@This(), instr: InstrFX16) void {
-                self.g_regs[instr.cr.rd] +%= self.g_regs[instr.cr.rs2];
+                if (instr.cr.rd != 0) {
+                    self.g_regs[instr.cr.rd] +%= self.g_regs[instr.cr.rs2];
+                }
                 self.pc += 2;
             }
 
@@ -1008,48 +1195,106 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
             }
 
             fn c_or(self: *@This(), instr: InstrFX16) void {
-                self.g_regs[instr.cr.rd] |= self.g_regs[instr.cr.rs2];
+                if (instr.cr.rd != 0) {
+                    self.g_regs[instr.cr.rd] |= self.g_regs[instr.cr.rs2];
+                }
                 self.pc += 2;
             }
 
             fn c_and(self: *@This(), instr: InstrFX16) void {
-                self.g_regs[instr.cr.rd] &= self.g_regs[instr.cr.rs2];
+                if (instr.cr.rd != 0) {
+                    self.g_regs[instr.cr.rd] &= self.g_regs[instr.cr.rs2];
+                }
                 self.pc += 2;
+            }
+
+            fn c_andi(self: *@This(), instr: InstrFX16) void {
+                const imm: i6 = @bitCast((@as(u6, instr.cb.offset2 >> 2) << 5) | @as(u6, instr.cb.offset1));
+                self.g_regs[instr.cb.rd()] = self.g_regs[instr.cb.rd()] & @as(uarch, @bitCast(@as(iarch, imm)));
+
+                self.pc += 2;
+            }
+
+            fn c_beqz(self: *@This(), instr: InstrFX16) void {
+                const imm = rearrange(u3, u9, instr.cb.offset2, &base.@"imm_8|4:3") | rearrange(u5, u9, instr.cb.offset1, &base.@"imm_7:6|2:1|5");
+                const offset = @as(uarch, @bitCast(@as(iarch, @as(i9, @bitCast(imm)))));
+                if (self.g_regs[instr.cb.rd()] == 0) {
+                    self.pc = self.pc +% offset;
+                } else {
+                    self.pc += 2;
+                }
+            }
+
+            fn c_bnez(self: *@This(), instr: InstrFX16) void {
+                const imm = rearrange(u3, u9, instr.cb.offset2, &base.@"imm_8|4:3") | rearrange(u5, u9, instr.cb.offset1, &base.@"imm_7:6|2:1|5");
+                const offset = @as(uarch, @bitCast(@as(iarch, @as(i9, @bitCast(imm)))));
+                if (self.g_regs[instr.cb.rd()] != 0) {
+                    self.pc = self.pc +% offset;
+                } else {
+                    self.pc += 2;
+                }
+            }
+
+            fn c_lw(self: *@This(), instr: InstrFX16, cpu: *CPU) !void {
+                var buffer: [4]u8 = undefined;
+                const imm = rearrange(u3, u7, instr.cs.imm2, &base.@"imm_5:3") | rearrange(u2, u7, instr.cs.imm1, &base.@"imm_2|6");
+                const offset = @as(uarch, imm);
+                try cpu.vmemory_read_all(self.g_regs[instr.cl.rs1()] +% offset, &buffer);
+                self.g_regs[instr.cl.rd()] = std.mem.readInt(u32, &buffer, .little);
+                self.pc += 2;
+            }
+
+            fn c_sw(self: *@This(), instr: InstrFX16, cpu: *CPU) !void {
+                var buffer: [4]u8 = undefined;
+                std.mem.writeInt(u32, &buffer, @truncate(self.g_regs[instr.cs.rs2()]), .little);
+                const imm = rearrange(u3, u7, instr.cs.imm2, &base.@"imm_5:3") | rearrange(u2, u7, instr.cs.imm1, &base.@"imm_2|6");
+                const offset = @as(uarch, imm);
+                try cpu.vmemory_write_all(self.g_regs[instr.cs.rs1()] +% offset, &buffer);
+                self.pc += 2;
+            }
+
+            fn c_sd(self: *@This(), instr: InstrFX16, cpu: *CPU) !void {
+                if (arch == .X64) {
+                    var buffer: [8]u8 = undefined;
+                    std.mem.writeInt(u64, &buffer, @truncate(self.g_regs[instr.cs.rs2()]), .little);
+                    const imm = rearrange(u3, u7, instr.cs.imm2, &base.@"imm_5:3") | rearrange(u2, u7, instr.cs.imm1, &base.@"imm_7:6");
+                    const offset = @as(uarch, imm);
+                    try cpu.vmemory_write_all(self.g_regs[instr.cs.rs1()] +% offset, &buffer);
+                    self.pc += 2;
+                } else {
+                    print("C_SD is not implemented for x32 CPU!\n", .{});
+                    return;
+                }
+            }
+
+            fn c_j(self: *@This(), instr: InstrFX16) void {
+                const imm = base.rearrange(u11, u12, @bitCast(instr.cj.target), &base.@"imm_11|4|9:8|10|6|7|3:1|5");
+                const offset: uarch = @bitCast(@as(iarch, imm));
+                self.pc = self.pc +% offset;
+                if (offset == 0) {
+                    print("Panic dectected!\n", .{});
+                    @breakpoint();
+                }
             }
 
             // END RVC
         };
 
-        eei: EEI,
         harts: [harts_len]Hart,
         allocator: Allocator,
         memory_maps: std.ArrayList(MemoryMap),
-        memory: std.ArrayList(u8),
 
-        pub const CSRDeclarator = struct {
-            csr_addr: u12,
-            initial_csr: CSR,
-        };
-
-        pub fn init(allocator: Allocator, csr_declarators: []const CSRDeclarator, eei: EEI) !CPU {
+        pub fn init(allocator: Allocator) !CPU {
             var cpu = CPU{
                 .allocator = allocator,
                 .harts = std.mem.zeroes([harts_len]Hart),
                 .memory_maps = std.ArrayList(MemoryMap).init(allocator),
-                .memory = std.ArrayList(u8).init(allocator),
-                .eei = eei,
             };
 
             for (&cpu.harts, 0..) |*hart, i| {
-                for (csr_declarators) |csr_declarator| {
-                    hart.csrs[csr_declarator.csr_addr].o_csr = csr_declarator.initial_csr;
-                }
-
                 hart.mode = .M;
 
-                _ = try hart.csrs[CSRAddr.mhartid.to_u12()].write(@truncate(i));
-                _ = try hart.csrs[CSRAddr.mvendorid.to_u12()].write(0);
-                _ = try hart.csrs[CSRAddr.marchid.to_u12()].write(0);
+                hart.csrs[CSRAddr.mhartid.to_u12()] = @truncate(i);
             }
 
             return cpu;
@@ -1057,25 +1302,11 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
 
         pub fn deinit(self: *CPU) void {
             self.memory_maps.deinit();
-            self.memory.deinit();
-        }
-
-        pub fn get_memory_size(self: CPU) u64 {
-            return self.memory.items.len;
-        }
-
-        pub fn set_memory_size(self: *CPU, size: u64) !void {
-            try self.memory.resize(@as(usize, size));
-            self.memory.items.len = size;
         }
 
         pub fn add_memory_map(self: *CPU, memory_map: MemoryMap) !void {
             if (memory_map.start > memory_map.end) {
                 return error.StartIsBiggerThenEnd;
-            }
-
-            if (memory_map.start >= self.memory.items.len or memory_map.end > self.memory.items.len) {
-                return error.OutOfSpace;
             }
 
             for (self.memory_maps.items) |map| {
@@ -1095,16 +1326,17 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
             var written: u64 = 0;
             for (0..buffer.len) |i| {
                 const offset = self.map_to_memory(address + i) catch break;
-                buffer[i] = self.memory.items[offset];
+                buffer[i] = @as(*u8, @ptrFromInt(offset)).*;
                 written += 1;
             }
             return written;
         }
 
         pub fn vmemory_read_all(self: CPU, address: uarch, buffer: []u8) !void {
+            std.debug.print("\tRead to 0x{x}-0x{x}\n", .{ address, address + buffer.len });
             for (0..buffer.len) |i| {
                 const offset = try self.map_to_memory(address + i);
-                buffer[i] = self.memory.items[offset];
+                buffer[i] = @as(*u8, @ptrFromInt(offset)).*;
             }
         }
 
@@ -1112,17 +1344,19 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
             var written: u64 = 0;
             for (0..buffer.len) |i| {
                 const offset = self.map_to_memory(address + i) catch break;
-                self.memory.items[offset] = buffer[i];
+                @as(*u8, @ptrFromInt(offset)).* = buffer[i];
                 written += 1;
             }
             return written;
         }
 
         pub fn vmemory_write_all(self: *CPU, address: u64, buffer: []const u8) !void {
+            std.debug.print("\tWrite to 0x{x}-0x{x}\n", .{ address, address + buffer.len });
             for (0..buffer.len) |i| {
                 const offset = try self.map_to_memory(address + i);
-                self.memory.items[offset] = buffer[i];
+                @as(*u8, @ptrFromInt(offset)).* = buffer[i];
             }
+            std.debug.print("\t{X}\n", .{buffer});
         }
 
         pub fn map_to_memory(self: CPU, address: u64) !u64 {
@@ -1142,65 +1376,16 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
             }
             return error.OutOfSpace;
         }
-
-        pub fn step(self: *CPU) !void {
-            for (&self.harts) |*thread| {
-                try thread.step(self);
-            }
-        }
-
-        pub const CSRSMachine = struct {
-            fn r_generic(self: *CSR) uarch {
-                return self.data;
-            }
-            fn w_generic(self: *CSR, value: uarch) void {
-                self.data = value;
-            }
-
-            const DEFAULT_CSR = CSR{ .data = 0, .read = &r_generic, .write = &w_generic };
-
-            pub const VENDORID: CSRDeclarator = .{ .csr_addr = CSRAddr.mvendorid.to_u12(), .initial_csr = DEFAULT_CSR };
-            pub const ARCHID: CSRDeclarator = .{ .csr_addr = CSRAddr.marchid.to_u12(), .initial_csr = DEFAULT_CSR };
-            pub const IMPID: CSRDeclarator = .{ .csr_addr = CSRAddr.mimpid.to_u12(), .initial_csr = DEFAULT_CSR };
-            pub const HARTID: CSRDeclarator = .{ .csr_addr = CSRAddr.mhartid.to_u12(), .initial_csr = DEFAULT_CSR };
-            pub const MSTATUS: CSRDeclarator = .{ .csr_addr = CSRAddr.mstatus.to_u12(), .initial_csr = DEFAULT_CSR };
-            pub const MEPC: CSRDeclarator = .{ .csr_addr = CSRAddr.mepc.to_u12(), .initial_csr = DEFAULT_CSR };
-            pub const MEDELEG: CSRDeclarator = .{ .csr_addr = CSRAddr.medeleg.to_u12(), .initial_csr = DEFAULT_CSR };
-            pub const MIDELEG: CSRDeclarator = .{ .csr_addr = CSRAddr.mideleg.to_u12(), .initial_csr = DEFAULT_CSR };
-            pub const PMPADDR0: CSRDeclarator = .{ .csr_addr = CSRAddr.pmpaddr0.to_u12(), .initial_csr = DEFAULT_CSR };
-            pub const PMPCFG0: CSRDeclarator = .{ .csr_addr = CSRAddr.pmpcfg0.to_u12(), .initial_csr = DEFAULT_CSR };
-            pub const MIE: CSRDeclarator = .{ .csr_addr = CSRAddr.mie.to_u12(), .initial_csr = DEFAULT_CSR };
-            pub const MENVCFG: CSRDeclarator = .{ .csr_addr = CSRAddr.menvcfg.to_u12(), .initial_csr = DEFAULT_CSR };
-            pub const MCOUNTEREN: CSRDeclarator = .{ .csr_addr = CSRAddr.mcounteren.to_u12(), .initial_csr = DEFAULT_CSR };
-            pub const MTVEC: CSRDeclarator = .{ .csr_addr = CSRAddr.mtvec.to_u12(), .initial_csr = DEFAULT_CSR };
-            pub const MNSTATUS: CSRDeclarator = .{ .csr_addr = CSRAddr.mnstatus.to_u12(), .initial_csr = DEFAULT_CSR };
-            pub const MSCRATCH: CSRDeclarator = .{ .csr_addr = CSRAddr.mscratch.to_u12(), .initial_csr = DEFAULT_CSR };
-
-            pub fn build_default(addr: u12) CSRDeclarator {
-                return CSRDeclarator{ .csr_addr = addr, .initial_csr = DEFAULT_CSR };
-            }
-
-            pub const DEFAULT = .{
-                CPU.CSRSMachine.HARTID,
-                CPU.CSRSMachine.VENDORID,
-                CPU.CSRSMachine.ARCHID,
-                CPU.CSRSMachine.IMPID,
-                CPU.CSRSMachine.MSTATUS,
-                CPU.CSRSMachine.MEPC,
-                CPU.CSRSMachine.MEDELEG,
-                CPU.CSRSMachine.MIDELEG,
-                CPU.CSRSMachine.PMPADDR0,
-                CPU.CSRSMachine.PMPCFG0,
-                CPU.CSRSMachine.MIE,
-                CPU.CSRSMachine.MENVCFG,
-                CPU.CSRSMachine.MCOUNTEREN,
-                CPU.CSRSMachine.MTVEC,
-                CPU.CSRSMachine.MNSTATUS,
-                CPU.CSRSMachine.MSCRATCH,
-                CPU.CSRSMachine.build_default(0x10),
-            };
-
-            pub const CSRS = [_]CSRDeclarator{ VENDORID, ARCHID, IMPID, HARTID, MSTATUS };
-        };
     };
+}
+
+test "CPU" {
+    const testing = std.testing;
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var cpu = try buildCPU(.X64, 1).init(gpa.allocator());
+    defer cpu.deinit();
+
+    print("Res: {}\n", .{cpu.harts[0].get_pmpcfg_from_paddri(0)});
+    try testing.expect(false);
 }

@@ -59,45 +59,72 @@ pub fn main() !void {
         32 => {
             const CPU =
                 riscv.buildCPU(.X32, 1);
-            const eei = build(CPU);
 
-            var cpu = try CPU.init(gpa.allocator(), &CPU.CSRSMachine.DEFAULT, .{ .ecall = eei.ecall });
+            var cpu = try CPU.init(gpa.allocator());
             defer cpu.deinit();
 
-            elf.load(CPU, &cpu, program_path) catch |err| {
+            const ELF = elf.build(CPU);
+
+            var object = ELF.load(&cpu, program_path) catch |err| {
                 print("Fail to load program: {s} Error: {}\n", .{ program_path, err });
                 return;
             };
+            defer object.deinit();
 
-            while (cpu.step()) {} else |err| {
+            const tohost_addr = object.sections.get(".tohost").?;
+
+            const tohost_result: *u32 = @ptrFromInt(try cpu.map_to_memory(tohost_addr));
+            const tohost_zero: *u32 = @ptrFromInt(try cpu.map_to_memory(tohost_addr + 0x4));
+
+            while (cpu.harts[0].step(&cpu)) {
+                if (tohost_zero.* != 0) {
+                    @panic("This should be zero, .tohost invalid memory");
+                }
+                if (tohost_result.* & 1 != 1) {
+                    continue;
+                }
+                const result = tohost_result.* >> 1;
+                print("{}\n", .{result});
+                if (result != 0) {
+                    std.process.exit(1);
+                } else {
+                    std.process.exit(0);
+                }
+            } else |err| {
                 print("Exited with: {}\n", .{err});
                 return err;
             }
         },
         64 => {
             const CPU = riscv.buildCPU(.X64, 1);
-            const eei = build(CPU);
 
-            var cpu = try CPU.init(gpa.allocator(), &CPU.CSRSMachine.DEFAULT, .{ .ecall = eei.ecall });
+            var cpu = try CPU.init(gpa.allocator());
             defer cpu.deinit();
 
-            elf.load(CPU, &cpu, program_path) catch |err| {
+            const ELF = elf.build(CPU);
+            var object = ELF.load(&cpu, program_path) catch |err| {
                 print("Fail to load program: {s} Error: {}\n", .{ program_path, err });
                 return;
             };
+            defer object.deinit();
+
+            const tohost_addr = object.sections.get(".tohost").?;
 
             var memory: [8]u8 = undefined;
             var test_memory: [8]u8 = undefined;
-            const ASM = @import("riscv/asm.zig").build_asm(.X64);
+            const riscv_asm = @import("riscv/asm.zig");
+            const ASM = riscv_asm.build_asm(.X64);
             var instr: ASM = undefined;
+            var old_values = std.mem.zeroes([4]u64);
+            const tohost_result: *u32 = @ptrFromInt(try cpu.map_to_memory(tohost_addr));
+            const tohost_zero: *u32 = @ptrFromInt(try cpu.map_to_memory(tohost_addr + 0x4));
             while (d: {
                 _ = try cpu.vmemory_read(cpu.harts[0].pc, &memory);
                 instr = try ASM.from_memory(&memory);
-                print("0x{x} ", .{cpu.harts[0].pc});
+                print("{s}: 0x{x} ", .{ cpu.harts[0].mode.name(), cpu.harts[0].pc });
                 try instr.write(std.io.getStdErr().writer().any());
-                for (instr.used_grs()) |reg| {
-                    if (reg.to_u5() == 0) continue;
-                    print("\tOld Reg: {s} = 0x{x}\n", .{ riscv.IntRegNames[reg.to_u5()], cpu.harts[0].g_regs[reg.to_u5()] });
+                for (0..instr.used_grs().len) |i| {
+                    old_values[i] = cpu.harts[0].g_regs[instr.used_grs()[i].to_u5()];
                 }
                 const len = try instr.to_memory(&test_memory);
                 if (!std.mem.eql(u8, memory[0..instr.len()], test_memory[0..len])) {
@@ -107,11 +134,25 @@ pub fn main() !void {
                     print("After: {b:0>8}\n", .{test_memory[0..len]});
                     return error.LossyDissasambler;
                 }
-                break :d cpu.step();
+                break :d cpu.harts[0].step(&cpu);
             }) {
-                for (instr.used_grs()) |reg| {
+                for (0..instr.used_grs().len) |i| {
+                    const reg = instr.used_grs()[i];
                     if (reg.to_u5() == 0) continue;
-                    print("\tNew Reg: {s} = 0x{x}\n", .{ riscv.IntRegNames[reg.to_u5()], cpu.harts[0].g_regs[reg.to_u5()] });
+                    print("\tReg: {s} = 0x{x} = 0x{x}\n", .{ riscv.IntRegNames[reg.to_u5()], old_values[i], cpu.harts[0].g_regs[reg.to_u5()] });
+                }
+                if (tohost_zero.* != 0) {
+                    @panic("This should be zero, .tohost invalid memory");
+                }
+                if (tohost_result.* & 1 != 1) {
+                    continue;
+                }
+                const result = tohost_result.* >> 1;
+                print("{}\n", .{result});
+                if (result != 0) {
+                    std.process.exit(1);
+                } else {
+                    std.process.exit(0);
                 }
             } else |err| {
                 print("Exited with: {}\n", .{err});

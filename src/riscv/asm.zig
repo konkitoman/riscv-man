@@ -29,14 +29,14 @@ inline fn s(T: type, value: anytype) T {
 pub const RV32I = union(enum) {
     LUI: struct { rd: IR, imm: u20 },
     AUIPC: struct { rd: IR, imm: u20 },
-    JAL: struct { rd: IR, imm: i20 },
+    JAL: struct { rd: IR, imm: i21 },
     JALR: struct { rd: IR, rs1: IR, imm: i12 },
-    BEQ: struct { rs1: IR, rs2: IR, offset: i12 },
-    BNE: struct { rs1: IR, rs2: IR, offset: i12 },
-    BLT: struct { rs1: IR, rs2: IR, offset: i12 },
-    BGE: struct { rs1: IR, rs2: IR, offset: i12 },
-    BLTU: struct { rs1: IR, rs2: IR, offset: i12 },
-    BGEU: struct { rs1: IR, rs2: IR, offset: i12 },
+    BEQ: struct { rs1: IR, rs2: IR, offset: i13 },
+    BNE: struct { rs1: IR, rs2: IR, offset: i13 },
+    BLT: struct { rs1: IR, rs2: IR, offset: i13 },
+    BGE: struct { rs1: IR, rs2: IR, offset: i13 },
+    BLTU: struct { rs1: IR, rs2: IR, offset: i13 },
+    BGEU: struct { rs1: IR, rs2: IR, offset: i13 },
     LB: struct { rd: IR, rs1: IR, offset: i12 },
     LH: struct { rd: IR, rs1: IR, offset: i12 },
     LW: struct { rd: IR, rs1: IR, offset: i12 },
@@ -78,14 +78,14 @@ pub const RV32I = union(enum) {
         const vari = switch (self) {
             .LUI => |i| (base.InstrFormatX32{ .u = .{ .imm_31_12 = i.imm, .rd = i.rd.to_u5(), .opcode = 0b0110111 } }).to_varinstr(),
             .AUIPC => |i| (base.InstrFormatX32{ .u = .{ .imm_31_12 = i.imm, .rd = i.rd.to_u5(), .opcode = 0b0010111 } }).to_varinstr(),
-            .JAL => |i| (base.InstrFormatX32{ .j = .{ .imm_10_1 = @truncate(cast(u20, i.imm)), .b_11 = @truncate(cast(u20, i.imm) >> 10), .imm_19_12 = @truncate((cast(u20, i.imm) >> 11)), .b_20 = @truncate(cast(u20, i.imm) >> 19), .rd = i.rd.to_u5(), .opcode = 0b1101111 } }).to_varinstr(),
+            .JAL => |i| (base.InstrFormatX32{ .jimm = .{ .imm = base.rev_rearrange(u21, u20, @bitCast(i.imm), &base.@"imm_20|10:1|11|19:12"), .rd = i.rd.to_u5(), .opcode = 0b1101111 } }).to_varinstr(),
             .JALR => |i| (base.InstrFormatX32{ .i = .{ .imm_11_0 = i.imm, .rs1 = i.rs1.to_u5(), .funct3 = 0b000, .rd = i.rd.to_u5(), .opcode = 0b1100111 } }).to_varinstr(),
-            .BEQ => |i| (base.InstrFormatX32{ .b = .{ .imm_12 = @truncate((cast(u12, i.offset) >> 11) & 1), .imm_11 = @truncate(cast(u12, i.offset) >> 10), .imm_10_5 = @truncate(cast(u12, i.offset) >> 4), .imm_4_1 = @truncate(cast(u12, i.offset)), .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b000, .opcode = 0b1100011 } }).to_varinstr(),
-            .BNE => |i| (base.InstrFormatX32{ .b = .{ .imm_12 = @truncate((cast(u12, i.offset) >> 11) & 1), .imm_11 = @truncate(cast(u12, i.offset) >> 10), .imm_10_5 = @truncate(cast(u12, i.offset) >> 4), .imm_4_1 = @truncate(cast(u12, i.offset)), .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b001, .opcode = 0b1100011 } }).to_varinstr(),
-            .BLT => |i| (base.InstrFormatX32{ .b = .{ .imm_12 = @truncate((cast(u12, i.offset) >> 11) & 1), .imm_11 = @truncate(cast(u12, i.offset) >> 10), .imm_10_5 = @truncate(cast(u12, i.offset) >> 4), .imm_4_1 = @truncate(cast(u12, i.offset)), .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b100, .opcode = 0b1100011 } }).to_varinstr(),
-            .BGE => |i| (base.InstrFormatX32{ .b = .{ .imm_12 = @truncate((cast(u12, i.offset) >> 11) & 1), .imm_11 = @truncate(cast(u12, i.offset) >> 10), .imm_10_5 = @truncate(cast(u12, i.offset) >> 4), .imm_4_1 = @truncate(cast(u12, i.offset)), .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b101, .opcode = 0b1100011 } }).to_varinstr(),
-            .BLTU => |i| (base.InstrFormatX32{ .b = .{ .imm_12 = @truncate((cast(u12, i.offset) >> 11) & 1), .imm_11 = @truncate(cast(u12, i.offset) >> 10), .imm_10_5 = @truncate(cast(u12, i.offset) >> 4), .imm_4_1 = @truncate(cast(u12, i.offset)), .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b110, .opcode = 0b1100011 } }).to_varinstr(),
-            .BGEU => |i| (base.InstrFormatX32{ .b = .{ .imm_12 = @truncate((cast(u12, i.offset) >> 11) & 1), .imm_11 = @truncate(cast(u12, i.offset) >> 10), .imm_10_5 = @truncate(cast(u12, i.offset) >> 4), .imm_4_1 = @truncate(cast(u12, i.offset)), .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b111, .opcode = 0b1100011 } }).to_varinstr(),
+            .BEQ => |i| (base.InstrFormatX32{ .b = .{ .offset2 = base.rev_rearrange(u13, u7, @bitCast(i.offset), &base.@"imm_12|10:5"), .offset1 = base.rev_rearrange(u13, u5, @bitCast(i.offset), &base.@"imm_4:1|11"), .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b000, .opcode = 0b1100011 } }).to_varinstr(),
+            .BNE => |i| (base.InstrFormatX32{ .b = .{ .offset2 = base.rev_rearrange(u13, u7, @bitCast(i.offset), &base.@"imm_12|10:5"), .offset1 = base.rev_rearrange(u13, u5, @bitCast(i.offset), &base.@"imm_4:1|11"), .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b001, .opcode = 0b1100011 } }).to_varinstr(),
+            .BLT => |i| (base.InstrFormatX32{ .b = .{ .offset2 = base.rev_rearrange(u13, u7, @bitCast(i.offset), &base.@"imm_12|10:5"), .offset1 = base.rev_rearrange(u13, u5, @bitCast(i.offset), &base.@"imm_4:1|11"), .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b100, .opcode = 0b1100011 } }).to_varinstr(),
+            .BGE => |i| (base.InstrFormatX32{ .b = .{ .offset2 = base.rev_rearrange(u13, u7, @bitCast(i.offset), &base.@"imm_12|10:5"), .offset1 = base.rev_rearrange(u13, u5, @bitCast(i.offset), &base.@"imm_4:1|11"), .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b101, .opcode = 0b1100011 } }).to_varinstr(),
+            .BLTU => |i| (base.InstrFormatX32{ .b = .{ .offset2 = base.rev_rearrange(u13, u7, @bitCast(i.offset), &base.@"imm_12|10:5"), .offset1 = base.rev_rearrange(u13, u5, @bitCast(i.offset), &base.@"imm_4:1|11"), .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b110, .opcode = 0b1100011 } }).to_varinstr(),
+            .BGEU => |i| (base.InstrFormatX32{ .b = .{ .offset2 = base.rev_rearrange(u13, u7, @bitCast(i.offset), &base.@"imm_12|10:5"), .offset1 = base.rev_rearrange(u13, u5, @bitCast(i.offset), &base.@"imm_4:1|11"), .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b111, .opcode = 0b1100011 } }).to_varinstr(),
             .LB => |i| (base.InstrFormatX32{ .i = .{ .imm_11_0 = i.offset, .rs1 = i.rs1.to_u5(), .funct3 = 0b000, .rd = i.rd.to_u5(), .opcode = 0b0000011 } }).to_varinstr(),
             .LH => |i| (base.InstrFormatX32{ .i = .{ .imm_11_0 = i.offset, .rs1 = i.rs1.to_u5(), .funct3 = 0b001, .rd = i.rd.to_u5(), .opcode = 0b0000011 } }).to_varinstr(),
             .LW => |i| (base.InstrFormatX32{ .i = .{ .imm_11_0 = i.offset, .rs1 = i.rs1.to_u5(), .funct3 = 0b010, .rd = i.rd.to_u5(), .opcode = 0b0000011 } }).to_varinstr(),
@@ -133,7 +133,7 @@ pub const RV32I = union(enum) {
                 return switch (i.opcode) {
                     0b0110111 => .{ .LUI = .{ .rd = IRf(i.u.rd), .imm = i.u.imm_31_12 } },
                     0b0010111 => .{ .AUIPC = .{ .rd = IRf(i.u.rd), .imm = i.u.imm_31_12 } },
-                    0b1101111 => .{ .JAL = .{ .rd = IRf(i.j.rd), .imm = i.j.get_imm() } },
+                    0b1101111 => .{ .JAL = .{ .rd = IRf(i.j.rd), .imm = @bitCast(base.rearrange(u20, u21, i.jimm.imm, &base.@"imm_20|10:1|11|19:12")) } },
                     0b1100111 => switch (i.i.funct3) {
                         0b000 => .{ .JALR = .{ .rd = IRf(i.i.rd), .rs1 = IRf(i.i.rs1), .imm = i.i.imm_11_0 } },
                         else => null,
@@ -231,12 +231,12 @@ pub const RV32I = union(enum) {
             .AUIPC => |i| writer.print("AUIPC {s}, 0x{x}\n", .{ i.rd.name(), i.imm }),
             .JAL => |i| writer.print("JAL {s}, 0x{x}\n", .{ i.rd.name(), i.imm }),
             .JALR => |i| writer.print("JALR {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), i.imm }),
-            .BEQ => |i| writer.print("BEQ {s}, {s}, 0x{x}\n", .{ i.rs1.name(), i.rs2.name(), @as(u12, @bitCast(i.offset)) }),
-            .BNE => |i| writer.print("BNE {s}, {s}, 0x{x}\n", .{ i.rs1.name(), i.rs2.name(), @as(u12, @bitCast(i.offset)) }),
-            .BLT => |i| writer.print("BLT {s}, {s}, 0x{x}\n", .{ i.rs1.name(), i.rs2.name(), @as(u12, @bitCast(i.offset)) }),
-            .BGE => |i| writer.print("BGE {s}, {s}, 0x{x}\n", .{ i.rs1.name(), i.rs2.name(), @as(u12, @bitCast(i.offset)) }),
-            .BLTU => |i| writer.print("BLTU {s}, {s}, 0x{x}\n", .{ i.rs1.name(), i.rs2.name(), @as(u12, @bitCast(i.offset)) }),
-            .BGEU => |i| writer.print("BGEU {s}, {s}, 0x{x}\n", .{ i.rs1.name(), i.rs2.name(), @as(u12, @bitCast(i.offset)) }),
+            .BEQ => |i| writer.print("BEQ {s}, {s}, 0x{x}\n", .{ i.rs1.name(), i.rs2.name(), i.offset }),
+            .BNE => |i| writer.print("BNE {s}, {s}, 0x{x}\n", .{ i.rs1.name(), i.rs2.name(), i.offset }),
+            .BLT => |i| writer.print("BLT {s}, {s}, 0x{x}\n", .{ i.rs1.name(), i.rs2.name(), i.offset }),
+            .BGE => |i| writer.print("BGE {s}, {s}, 0x{x}\n", .{ i.rs1.name(), i.rs2.name(), i.offset }),
+            .BLTU => |i| writer.print("BLTU {s}, {s}, 0x{x}\n", .{ i.rs1.name(), i.rs2.name(), i.offset }),
+            .BGEU => |i| writer.print("BGEU {s}, {s}, 0x{x}\n", .{ i.rs1.name(), i.rs2.name(), i.offset }),
             .LB => |i| writer.print("LB {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), @as(u12, @bitCast(i.offset)) }),
             .LH => |i| writer.print("LH {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), @as(u12, @bitCast(i.offset)) }),
             .LW => |i| writer.print("LW {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), @as(u12, @bitCast(i.offset)) }),
@@ -818,12 +818,12 @@ pub const Ziscr = union(enum) {
 
     pub fn write(self: Self, writer: std.io.AnyWriter) !void {
         return switch (self) {
-            .CSRRW => |i| writer.print("CSRRW {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), i.csr }),
-            .CSRRS => |i| writer.print("CSRRS {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), i.csr }),
-            .CSRRC => |i| writer.print("CSRRC {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), i.csr }),
-            .CSRRWI => |i| writer.print("CSRRWI {s}, 0x{x}, 0x{x}\n", .{ i.rd.name(), i.uimm, i.csr }),
-            .CSRRSI => |i| writer.print("CSRRSI {s}, 0x{x}, 0x{x}\n", .{ i.rd.name(), i.uimm, i.csr }),
-            .CSRRCI => |i| writer.print("CSRRCI {s}, 0x{x}, 0x{x}\n", .{ i.rd.name(), i.uimm, i.csr }),
+            .CSRRW => |i| writer.print("CSRRW {s}, {s}, {s}\n", .{ i.rd.name(), base.CSRAddrU.from_u12(i.csr).name(), i.rs1.name() }),
+            .CSRRS => |i| writer.print("CSRRS {s}, {s}, {s}\n", .{ i.rd.name(), base.CSRAddrU.from_u12(i.csr).name(), i.rs1.name() }),
+            .CSRRC => |i| writer.print("CSRRC {s}, {s}, {s}\n", .{ i.rd.name(), base.CSRAddrU.from_u12(i.csr).name(), i.rs1.name() }),
+            .CSRRWI => |i| writer.print("CSRRWI {s}, {s}, 0x{x}\n", .{ i.rd.name(), base.CSRAddrU.from_u12(i.csr).name(), i.uimm }),
+            .CSRRSI => |i| writer.print("CSRRSI {s}, {s}, 0x{x}\n", .{ i.rd.name(), base.CSRAddrU.from_u12(i.csr).name(), i.uimm }),
+            .CSRRCI => |i| writer.print("CSRRCI {s}, {s}, 0x{x}\n", .{ i.rd.name(), base.CSRAddrU.from_u12(i.csr).name(), i.uimm }),
         };
     }
 
@@ -858,6 +858,153 @@ pub const Ziscr = union(enum) {
     }
 };
 
+pub const RV32A = union(enum) {
+    LR_W: struct { rd: IR, rs1: IR, rl: bool, aq: bool },
+    SC_W: struct { rd: IR, rs1: IR, rs2: IR, rl: bool, aq: bool },
+
+    const Self = @This();
+
+    pub fn to_memory(self: Self, memory: []u8) error{OutOfSpace}!usize {
+        const vari = switch (self) {
+            .LR_W => |i| (base.InstrFormatX32{ .r = .{ .funct7 = (0b00010 << 2) | @intFromBool(i.rl) | (@intFromBool(i.aq) << 1), .rs2 = 0, .rs1 = i.rs1.to_u5(), .funct3 = 0b010, .rd = i.rd.to_u5(), .opcode = 0b0101111 } }).to_varinstr(),
+            .SC_W => |i| (base.InstrFormatX32{ .r = .{ .funct7 = (0b00011 << 2) | @intFromBool(i.rl) | (@intFromBool(i.aq) << 1), .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b010, .rd = i.rd.to_u5(), .opcode = 0b0101111 } }).to_varinstr(),
+        };
+
+        return vari.to_memory(memory);
+    }
+
+    pub fn from_memory(instr: base.VarInstr) ?Self {
+        return switch (instr) {
+            .x32 => |x32| {
+                const i = base.InstrFormatX32.from_u32(x32);
+
+                return switch (i.opcode) {
+                    0b0101111 => switch (i.r.funct3) {
+                        0b010 => switch (i.r.funct7 >> 2) {
+                            0b00010 => .{ .LR_W = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rl = i.r.funct7 & 1 == 1, .aq = i.r.funct7 & 2 == 2 } },
+                            0b00011 => .{ .SC_W = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2), .rl = i.r.funct7 & 1 == 1, .aq = i.r.funct7 & 2 == 2 } },
+                            else => null,
+                        },
+                        else => null,
+                    },
+                    else => null,
+                };
+            },
+            else => null,
+        };
+    }
+
+    pub fn len(self: Self) usize {
+        _ = self;
+        return 4;
+    }
+
+    pub fn write(self: Self, writer: std.io.AnyWriter) !void {
+        return switch (self) {
+            .LR_W => |i| writer.print("lr.w{s}{s} {s}, {s}\n", .{ ".aq"[0..@intFromBool(i.aq)], ".rl"[0..@intFromBool(i.rl)], i.rd.name(), i.rs1.name() }),
+            .SC_W => |i| writer.print("sc.w{s}{s} {s}, {s}, {s}\n", .{ ".aq"[0..@intFromBool(i.aq)], ".rl"[0..@intFromBool(i.rl)], i.rd.name(), i.rs1.name(), i.rs2.name() }),
+        };
+    }
+
+    pub fn used_grs(self: Self) [3]IR {
+        return switch (self) {
+            .LR_W => |i| .{ i.rd, i.rs1, IR.ZERO },
+            .SC_W => |i| .{ i.rd, i.rs1, i.rs2 },
+        };
+    }
+};
+
+pub const RV32Zaamo = union(enum) {
+    AMOSWAP_W: struct { rd: IR, rs1: IR, rs2: IR, rl: bool, aq: bool },
+    AMOADD_W: struct { rd: IR, rs1: IR, rs2: IR, rl: bool, aq: bool },
+    AMOXOR_W: struct { rd: IR, rs1: IR, rs2: IR, rl: bool, aq: bool },
+    AMOAND_W: struct { rd: IR, rs1: IR, rs2: IR, rl: bool, aq: bool },
+    AMOOR_W: struct { rd: IR, rs1: IR, rs2: IR, rl: bool, aq: bool },
+    AMOMIN_W: struct { rd: IR, rs1: IR, rs2: IR, rl: bool, aq: bool },
+    AMOMAX_W: struct { rd: IR, rs1: IR, rs2: IR, rl: bool, aq: bool },
+    AMOMINU_W: struct { rd: IR, rs1: IR, rs2: IR, rl: bool, aq: bool },
+    AMOMAXU_W: struct { rd: IR, rs1: IR, rs2: IR, rl: bool, aq: bool },
+
+    const Self = @This();
+
+    pub fn to_memory(self: Self, memory: []u8) error{OutOfSpace}!usize {
+        const vari = switch (self) {
+            .AMOSWAP_W => |i| (base.InstrFormatX32{ .r = .{ .funct7 = (s(u7, 0b00001) << 2) | @intFromBool(i.rl) | (s(u7, @intFromBool(i.aq)) << 1), .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b010, .rd = i.rd.to_u5(), .opcode = 0b0101111 } }).to_varinstr(),
+            .AMOADD_W => |i| (base.InstrFormatX32{ .r = .{ .funct7 = (s(u7, 0b00000) << 2) | @intFromBool(i.rl) | (s(u7, @intFromBool(i.aq)) << 1), .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b010, .rd = i.rd.to_u5(), .opcode = 0b0101111 } }).to_varinstr(),
+            .AMOXOR_W => |i| (base.InstrFormatX32{ .r = .{ .funct7 = (s(u7, 0b00100) << 2) | @intFromBool(i.rl) | (s(u7, @intFromBool(i.aq)) << 1), .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b010, .rd = i.rd.to_u5(), .opcode = 0b0101111 } }).to_varinstr(),
+            .AMOAND_W => |i| (base.InstrFormatX32{ .r = .{ .funct7 = (s(u7, 0b01100) << 2) | @intFromBool(i.rl) | (s(u7, @intFromBool(i.aq)) << 1), .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b010, .rd = i.rd.to_u5(), .opcode = 0b0101111 } }).to_varinstr(),
+            .AMOOR_W => |i| (base.InstrFormatX32{ .r = .{ .funct7 = (s(u7, 0b01000) << 2) | @intFromBool(i.rl) | (s(u7, @intFromBool(i.aq)) << 1), .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b010, .rd = i.rd.to_u5(), .opcode = 0b0101111 } }).to_varinstr(),
+            .AMOMIN_W => |i| (base.InstrFormatX32{ .r = .{ .funct7 = (s(u7, 0b10000) << 2) | @intFromBool(i.rl) | (s(u7, @intFromBool(i.aq)) << 1), .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b010, .rd = i.rd.to_u5(), .opcode = 0b0101111 } }).to_varinstr(),
+            .AMOMAX_W => |i| (base.InstrFormatX32{ .r = .{ .funct7 = (s(u7, 0b10100) << 2) | @intFromBool(i.rl) | (s(u7, @intFromBool(i.aq)) << 1), .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b010, .rd = i.rd.to_u5(), .opcode = 0b0101111 } }).to_varinstr(),
+            .AMOMINU_W => |i| (base.InstrFormatX32{ .r = .{ .funct7 = (s(u7, 0b11000) << 2) | @intFromBool(i.rl) | (s(u7, @intFromBool(i.aq)) << 1), .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b010, .rd = i.rd.to_u5(), .opcode = 0b0101111 } }).to_varinstr(),
+            .AMOMAXU_W => |i| (base.InstrFormatX32{ .r = .{ .funct7 = (s(u7, 0b11100) << 2) | @intFromBool(i.rl) | (s(u7, @intFromBool(i.aq)) << 1), .rs2 = i.rs2.to_u5(), .rs1 = i.rs1.to_u5(), .funct3 = 0b010, .rd = i.rd.to_u5(), .opcode = 0b0101111 } }).to_varinstr(),
+        };
+
+        return vari.to_memory(memory);
+    }
+
+    pub fn from_memory(instr: base.VarInstr) ?Self {
+        return switch (instr) {
+            .x32 => |x32| {
+                const i = base.InstrFormatX32.from_u32(x32);
+
+                return switch (i.opcode) {
+                    0b0101111 => switch (i.r.funct3) {
+                        0b010 => switch (i.r.funct7 >> 2) {
+                            0b00001 => .{ .AMOSWAP_W = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2), .rl = i.r.funct7 & 1 == 1, .aq = i.r.funct7 & 2 == 2 } },
+                            0b00000 => .{ .AMOADD_W = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2), .rl = i.r.funct7 & 1 == 1, .aq = i.r.funct7 & 2 == 2 } },
+                            0b00100 => .{ .AMOXOR_W = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2), .rl = i.r.funct7 & 1 == 1, .aq = i.r.funct7 & 2 == 2 } },
+                            0b01100 => .{ .AMOAND_W = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2), .rl = i.r.funct7 & 1 == 1, .aq = i.r.funct7 & 2 == 2 } },
+                            0b01000 => .{ .AMOOR_W = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2), .rl = i.r.funct7 & 1 == 1, .aq = i.r.funct7 & 2 == 2 } },
+                            0b10000 => .{ .AMOMIN_W = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2), .rl = i.r.funct7 & 1 == 1, .aq = i.r.funct7 & 2 == 2 } },
+                            0b10100 => .{ .AMOMAX_W = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2), .rl = i.r.funct7 & 1 == 1, .aq = i.r.funct7 & 2 == 2 } },
+                            0b11000 => .{ .AMOMINU_W = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2), .rl = i.r.funct7 & 1 == 1, .aq = i.r.funct7 & 2 == 2 } },
+                            0b11100 => .{ .AMOMAXU_W = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2), .rl = i.r.funct7 & 1 == 1, .aq = i.r.funct7 & 2 == 2 } },
+                            else => null,
+                        },
+                        else => null,
+                    },
+                    else => null,
+                };
+            },
+            else => null,
+        };
+    }
+
+    pub fn len(self: Self) usize {
+        _ = self;
+        return 4;
+    }
+
+    pub fn write(self: Self, writer: std.io.AnyWriter) !void {
+        return switch (self) {
+            .AMOSWAP_W => |i| writer.print("amoswap.w{s}{s} {s}, {s}, {s}\n", .{ ".aq"[0..@intFromBool(i.aq)], ".rl"[0..@intFromBool(i.rl)], i.rd.name(), i.rs1.name(), i.rs2.name() }),
+            .AMOADD_W => |i| writer.print("amoadd.w{s}{s} {s}, {s}, {s}\n", .{ ".aq"[0..@intFromBool(i.aq)], ".rl"[0..@intFromBool(i.rl)], i.rd.name(), i.rs1.name(), i.rs2.name() }),
+            .AMOXOR_W => |i| writer.print("amoxor.w{s}{s} {s}, {s}, {s}\n", .{ ".aq"[0..@intFromBool(i.aq)], ".rl"[0..@intFromBool(i.rl)], i.rd.name(), i.rs1.name(), i.rs2.name() }),
+            .AMOAND_W => |i| writer.print("amoand.w{s}{s} {s}, {s}, {s}\n", .{ ".aq"[0..@intFromBool(i.aq)], ".rl"[0..@intFromBool(i.rl)], i.rd.name(), i.rs1.name(), i.rs2.name() }),
+            .AMOOR_W => |i| writer.print("amoor.w{s}{s} {s}, {s}, {s}\n", .{ ".aq"[0..@intFromBool(i.aq)], ".rl"[0..@intFromBool(i.rl)], i.rd.name(), i.rs1.name(), i.rs2.name() }),
+            .AMOMIN_W => |i| writer.print("amomin.w{s}{s} {s}, {s}, {s}\n", .{ ".aq"[0..@intFromBool(i.aq)], ".rl"[0..@intFromBool(i.rl)], i.rd.name(), i.rs1.name(), i.rs2.name() }),
+            .AMOMAX_W => |i| writer.print("amomax.w{s}{s} {s}, {s}, {s}\n", .{ ".aq"[0..@intFromBool(i.aq)], ".rl"[0..@intFromBool(i.rl)], i.rd.name(), i.rs1.name(), i.rs2.name() }),
+            .AMOMINU_W => |i| writer.print("amominu.w{s}{s} {s}, {s}, {s}\n", .{ ".aq"[0..@intFromBool(i.aq)], ".rl"[0..@intFromBool(i.rl)], i.rd.name(), i.rs1.name(), i.rs2.name() }),
+            .AMOMAXU_W => |i| writer.print("amomaxu.w{s}{s} {s}, {s}, {s}\n", .{ ".aq"[0..@intFromBool(i.aq)], ".rl"[0..@intFromBool(i.rl)], i.rd.name(), i.rs1.name(), i.rs2.name() }),
+        };
+    }
+
+    pub fn used_grs(self: Self) [3]IR {
+        return switch (self) {
+            .AMOSWAP_W => |i| .{ i.rd, i.rs1, i.rs2 },
+            .AMOADD_W => |i| .{ i.rd, i.rs1, i.rs2 },
+            .AMOXOR_W => |i| .{ i.rd, i.rs1, i.rs2 },
+            .AMOAND_W => |i| .{ i.rd, i.rs1, i.rs2 },
+            .AMOOR_W => |i| .{ i.rd, i.rs1, i.rs2 },
+            .AMOMIN_W => |i| .{ i.rd, i.rs1, i.rs2 },
+            .AMOMAX_W => |i| .{ i.rd, i.rs1, i.rs2 },
+            .AMOMINU_W => |i| .{ i.rd, i.rs1, i.rs2 },
+            .AMOMAXU_W => |i| .{ i.rd, i.rs1, i.rs2 },
+        };
+    }
+};
+
 pub const RV32C = union(enum) {
     C_LWSP: struct { rd: IR, uimm: u6 },
     C_FLWSP: struct { rd: IR, uimm: u6 },
@@ -867,12 +1014,12 @@ pub const RV32C = union(enum) {
     C_FLW: struct { rd: PIR, rs1: PIR, uimm: u5 },
     C_SW: struct { rs1: PIR, rs2: PIR, uimm: u5 },
     C_FSW: struct { rs1: PIR, rs2: PIR, uimm: u5 },
-    C_J: struct { imm: i11 },
-    C_JAL: struct { imm: i11 },
+    C_J: struct { imm: i12 },
+    C_JAL: struct { imm: i12 },
     C_JR: struct { rs1: IR },
     C_JALR: struct { rs1: IR },
-    C_BEQZ: struct { rs1: PIR, imm: i8 },
-    C_BNEZ: struct { rs1: PIR, imm: i8 },
+    C_BEQZ: struct { rs1: PIR, imm: i9 },
+    C_BNEZ: struct { rs1: PIR, imm: i9 },
     C_LI: struct { rd: IR, imm: i6 },
     C_LUI: struct { rd: IR, imm: i6 },
     C_ADDI: struct { rd: IR, imm: i6 },
@@ -902,12 +1049,12 @@ pub const RV32C = union(enum) {
             .C_FLW => |i| (IF16{ .cl = .{ .funct3 = 0b011, .op = 0b00, .imm2 = t(u3, i.uimm >> 2), .prs1 = i.rs1.to_u3(), .imm1 = t(u2, i.uimm), .prd = i.rd.to_u3() } }).to_varinstr().to_memory(memory),
             .C_SW => |i| (IF16{ .cs = .{ .funct3 = 0b110, .op = 0b00, .imm2 = t(u3, i.uimm >> 2), .imm1 = t(u2, i.uimm), .prs1 = i.rs1.to_u3(), .prs2 = i.rs2.to_u3() } }).to_varinstr().to_memory(memory),
             .C_FSW => |i| (IF16{ .cs = .{ .funct3 = 0b111, .op = 0b00, .imm2 = t(u3, i.uimm >> 2), .imm1 = t(u2, i.uimm), .prs1 = i.rs1.to_u3(), .prs2 = i.rs2.to_u3() } }).to_varinstr().to_memory(memory),
-            .C_J => |i| (IF16{ .cj = .{ .funct3 = 0b101, .op = 0b01, .target = i.imm } }).to_varinstr().to_memory(memory),
-            .C_JAL => |i| (IF16{ .cj = .{ .funct3 = 0b001, .op = 0b01, .target = i.imm } }).to_varinstr().to_memory(memory),
-            .C_JR => |i| (IF16{ .cr = .{ .funct4 = 0b1000, .op = 0b10, .rs2 = i.rs1.to_u5(), .rd = 0 } }).to_varinstr().to_memory(memory),
-            .C_JALR => |i| (IF16{ .cr = .{ .funct4 = 0b1001, .op = 0b10, .rs2 = i.rs1.to_u5(), .rd = 0 } }).to_varinstr().to_memory(memory),
-            .C_BEQZ => |i| (IF16{ .cb = .{ .funct3 = 0b110, .op = 0b01, .offset2 = t(u3, cast(u8, i.imm) >> 5), .prd = i.rs1.to_u3(), .offset1 = t(u5, cast(u8, i.imm)) } }).to_varinstr().to_memory(memory),
-            .C_BNEZ => |i| (IF16{ .cb = .{ .funct3 = 0b111, .op = 0b01, .offset2 = t(u3, cast(u8, i.imm) >> 5), .prd = i.rs1.to_u3(), .offset1 = t(u5, cast(u8, i.imm)) } }).to_varinstr().to_memory(memory),
+            .C_J => |i| (IF16{ .cj = .{ .funct3 = 0b101, .op = 0b01, .target = base.rev_rearrange(i12, i11, i.imm, &base.@"imm_11|4|9:8|10|6|7|3:1|5") } }).to_varinstr().to_memory(memory),
+            .C_JAL => |i| (IF16{ .cj = .{ .funct3 = 0b001, .op = 0b01, .target = base.rev_rearrange(i12, i11, i.imm, &base.@"imm_11|4|9:8|10|6|7|3:1|5") } }).to_varinstr().to_memory(memory),
+            .C_JR => |i| (IF16{ .cr = .{ .funct4 = 0b1000, .op = 0b10, .rs2 = 0, .rd = i.rs1.to_u5() } }).to_varinstr().to_memory(memory),
+            .C_JALR => |i| (IF16{ .cr = .{ .funct4 = 0b1001, .op = 0b10, .rs2 = 0, .rd = i.rs1.to_u5() } }).to_varinstr().to_memory(memory),
+            .C_BEQZ => |i| (IF16{ .cb = .{ .funct3 = 0b110, .op = 0b01, .offset2 = base.rev_rearrange(u9, u3, @bitCast(i.imm), &base.@"imm_8|4:3"), .prd = i.rs1.to_u3(), .offset1 = base.rev_rearrange(u9, u5, @bitCast(i.imm), &base.@"imm_7:6|2:1|5") } }).to_varinstr().to_memory(memory),
+            .C_BNEZ => |i| (IF16{ .cb = .{ .funct3 = 0b111, .op = 0b01, .offset2 = base.rev_rearrange(u9, u3, @bitCast(i.imm), &base.@"imm_8|4:3"), .prd = i.rs1.to_u3(), .offset1 = base.rev_rearrange(u9, u5, @bitCast(i.imm), &base.@"imm_7:6|2:1|5") } }).to_varinstr().to_memory(memory),
             .C_LI => |i| (IF16{ .ci = .{ .funct3 = 0b010, .op = 0b01, .imm_12 = t(u1, cast(u6, i.imm) >> 5), .rd = i.rd.to_u5(), .imm_2_6 = t(u5, cast(u6, i.imm)) } }).to_varinstr().to_memory(memory),
             .C_LUI => |i| (IF16{ .ci = .{ .funct3 = 0b011, .op = 0b01, .imm_12 = t(u1, cast(u6, i.imm) >> 5), .rd = i.rd.to_u5(), .imm_2_6 = t(u5, cast(u6, i.imm)) } }).to_varinstr().to_memory(memory),
             .C_ADDI => |i| (IF16{ .ci = .{ .funct3 = 0b000, .op = 0b01, .imm_12 = t(u1, cast(u6, i.imm) >> 5), .rd = i.rd.to_u5(), .imm_2_6 = t(u5, cast(u6, i.imm)) } }).to_varinstr().to_memory(memory),
@@ -942,7 +1089,7 @@ pub const RV32C = union(enum) {
                         else => null,
                     },
                     0b01 => switch (i.ci.funct3) {
-                        0b001 => .{ .C_JAL = .{ .imm = i.cj.target } },
+                        0b001 => .{ .C_JAL = .{ .imm = base.rearrange(i11, i12, i.cj.target, &base.@"imm_11|4|9:8|10|6|7|3:1|5") } },
                         0b000 => .{ .C_ADDI = .{ .imm = cast(i6, (s(u6, i.ci.imm_12) << 5) | s(u6, i.ci.imm_2_6)), .rd = IRf(i.ci.rd) } },
                         0b010 => .{ .C_LI = .{ .imm = cast(i6, (s(u6, i.ci.imm_12) << 5) | s(u6, i.ci.imm_2_6)), .rd = IRf(i.ci.rd) } },
                         0b011 => if (i.ci.rd == 2)
@@ -963,21 +1110,21 @@ pub const RV32C = union(enum) {
                             else
                                 null,
                         },
-                        0b101 => .{ .C_J = .{ .imm = i.cj.target } },
-                        0b110 => .{ .C_BEQZ = .{ .imm = cast(i8, (s(u8, i.cb.offset2) << 5) | s(u8, i.cb.offset1)), .rs1 = PIRf(i.cb.prd) } },
-                        0b111 => .{ .C_BNEZ = .{ .imm = cast(i8, (s(u8, i.cb.offset2) << 5) | s(u8, i.cb.offset1)), .rs1 = PIRf(i.cb.prd) } },
+                        0b101 => .{ .C_J = .{ .imm = base.rearrange(i11, i12, i.cj.target, &base.@"imm_11|4|9:8|10|6|7|3:1|5") } },
+                        0b110 => .{ .C_BEQZ = .{ .imm = base.rearrange(u3, i9, i.cb.offset2, &base.@"imm_8|4:3") | base.rearrange(u5, i9, i.cb.offset1, &base.@"imm_7:6|2:1|5"), .rs1 = PIRf(i.cb.prd) } },
+                        0b111 => .{ .C_BNEZ = .{ .imm = base.rearrange(u3, i9, i.cb.offset2, &base.@"imm_8|4:3") | base.rearrange(u5, i9, i.cb.offset1, &base.@"imm_7:6|2:1|5"), .rs1 = PIRf(i.cb.prd) } },
                     },
                     0b10 => switch (i.ci.funct3) {
                         0b000 => .{ .C_SLLI = .{ .shamt = (s(u6, i.ci.imm_12) << 5) | s(u6, i.ci.imm_2_6), .rd = IRf(i.ci.rd) } },
                         0b010 => .{ .C_LWSP = .{ .uimm = (s(u6, i.ci.imm_12) << 5) | s(u6, i.ci.imm_2_6), .rd = IRf(i.ci.rd) } },
                         0b011 => .{ .C_FLWSP = .{ .uimm = (s(u6, i.ci.imm_12) << 5) | s(u6, i.ci.imm_2_6), .rd = IRf(i.ci.rd) } },
                         0b100 => switch (i.ci.imm_12) {
-                            0 => if (i.cr.rd == 0)
-                                Self{ .C_JR = .{ .rs1 = IRf(i.cr.rs2) } }
+                            0 => if (i.cr.rs2 == 0)
+                                Self{ .C_JR = .{ .rs1 = IRf(i.cr.rd) } }
                             else
                                 Self{ .C_MV = .{ .rd = IRf(i.cr.rd), .rs2 = IRf(i.cr.rs2) } },
-                            1 => if (i.cr.rd == 0)
-                                Self{ .C_JALR = .{ .rs1 = IRf(i.cr.rs2) } }
+                            1 => if (i.cr.rs2 == 0)
+                                Self{ .C_JALR = .{ .rs1 = IRf(i.cr.rd) } }
                             else if (i.cr.rd == 0 and i.cr.rs2 == 0)
                                 Self.C_EBREAK
                             else
@@ -1009,8 +1156,8 @@ pub const RV32C = union(enum) {
             .C_FLW => |i| writer.print("C_FLW {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), i.uimm }),
             .C_SW => |i| writer.print("C_SW {s}, {s}, 0x{x}\n", .{ i.rs1.name(), i.rs2.name(), i.uimm }),
             .C_FSW => |i| writer.print("C_FSW {s}, {s}, 0x{x}\n", .{ i.rs1.name(), i.rs2.name(), i.uimm }),
-            .C_J => |i| writer.print("C_J {x}\n", .{i.imm}),
-            .C_JAL => |i| writer.print("C_JAL {x}\n", .{i.imm}),
+            .C_J => |i| writer.print("C_J 0x{x}\n", .{i.imm}),
+            .C_JAL => |i| writer.print("C_JAL 0x{x}\n", .{i.imm}),
             .C_JR => |i| writer.print("C_JR {s}\n", .{i.rs1.name()}),
             .C_JALR => |i| writer.print("C_JALR {s}\n", .{i.rs1.name()}),
             .C_BEQZ => |i| writer.print("C_BEQZ {s}, {x}\n", .{ i.rs1.name(), i.imm }),
@@ -1054,7 +1201,7 @@ pub const RV32C = union(enum) {
             .C_LUI => |i| .{ i.rd, IR.ZERO, IR.ZERO },
             .C_ADDI => |i| .{ i.rd, IR.ZERO, IR.ZERO },
             .C_ADDI16SP => |_| .{ IR.SP, IR.ZERO, IR.ZERO },
-            .C_ADDI4SPN => |_| .{ IR.SP, IR.ZERO, IR.ZERO },
+            .C_ADDI4SPN => |i| .{ i.rd.to_reg(), IR.SP, IR.ZERO },
             .C_SLLI => |i| .{ i.rd, IR.ZERO, IR.ZERO },
             .C_SRLI => |i| .{ i.rd.to_reg(), IR.ZERO, IR.ZERO },
             .C_SRAI => |i| .{ i.rd.to_reg(), IR.ZERO, IR.ZERO },
@@ -1077,6 +1224,7 @@ pub const RV64C = union(enum) {
     C_FSDSP: struct { rd: IR, uimm: u6 },
     C_LD: struct { rd: PIR, rs1: PIR, uimm: u5 },
     C_FLD: struct { rd: PIR, rs1: PIR, uimm: u5 },
+    C_SD: struct { rs1: PIR, rs2: PIR, uimm: u5 },
     C_ADDIW: struct { rd: IR, imm: i6 },
     C_ADDW: struct { rd: PIR, rs2: PIR },
     C_SUBW: struct { rd: PIR, rs2: PIR },
@@ -1091,6 +1239,7 @@ pub const RV64C = union(enum) {
             .C_FSDSP => |i| (base.InstrFormatX16{ .css = .{ .funct3 = 0b101, .imm = i.uimm, .rs2 = i.rd.to_u5(), .op = 0b10 } }).to_varinstr().to_memory(memory),
             .C_LD => |i| (base.InstrFormatX16{ .cl = .{ .funct3 = 0b011, .imm2 = t(u3, i.uimm), .prs1 = i.rs1.to_u3(), .imm1 = t(u2, i.uimm << 3), .prd = i.rd.to_u3(), .op = 0b00 } }).to_varinstr().to_memory(memory),
             .C_FLD => |i| (base.InstrFormatX16{ .cl = .{ .funct3 = 0b001, .imm2 = t(u3, i.uimm), .prs1 = i.rs1.to_u3(), .imm1 = t(u2, i.uimm << 3), .prd = i.rd.to_u3(), .op = 0b00 } }).to_varinstr().to_memory(memory),
+            .C_SD => |i| (IF16{ .cs = .{ .funct3 = 0b111, .op = 0b00, .imm2 = t(u3, i.uimm >> 2), .imm1 = t(u2, i.uimm), .prs1 = i.rs1.to_u3(), .prs2 = i.rs2.to_u3() } }).to_varinstr().to_memory(memory),
             .C_ADDIW => |i| (base.InstrFormatX16{ .ci = .{ .funct3 = 0b001, .imm_12 = t(u1, cast(u6, i.imm) >> 5), .rd = i.rd.to_u5(), .imm_2_6 = t(u5, cast(u6, i.imm)), .op = 0b01 } }).to_varinstr().to_memory(memory),
             .C_ADDW => |i| (base.InstrFormatX16{ .ca = .{ .funct3 = 0b100, .offset = 0b111, .prd = i.rd.to_u3(), .funct2 = 0b01, .prs2 = i.rs2.to_u3(), .op = 0b01 } }).to_varinstr().to_memory(memory),
             .C_SUBW => |i| (base.InstrFormatX16{ .ca = .{ .funct3 = 0b100, .offset = 0b111, .prd = i.rd.to_u3(), .funct2 = 0b00, .prs2 = i.rs2.to_u3(), .op = 0b01 } }).to_varinstr().to_memory(memory),
@@ -1106,6 +1255,7 @@ pub const RV64C = union(enum) {
                     0b00 => switch (i.cl.funct3) {
                         0b001 => .{ .C_LD = .{ .uimm = (s(u5, i.cl.imm1) << 3) + s(u5, i.cl.imm2), .rs1 = PIRf(i.cl.prs1), .rd = PIRf(i.cl.prd) } },
                         0b011 => .{ .C_FLD = .{ .uimm = (s(u5, i.cl.imm1) << 3) + s(u5, i.cl.imm2), .rs1 = PIRf(i.cl.prs1), .rd = PIRf(i.cl.prd) } },
+                        0b111 => .{ .C_SD = .{ .uimm = (s(u5, i.cs.imm2) << 2) | s(u5, i.cs.imm1), .rs2 = PIRf(i.cs.prs2), .rs1 = PIRf(i.cs.prs1) } },
                         else => null,
                     },
                     0b01 => switch (i.ca.funct3) {
@@ -1149,6 +1299,7 @@ pub const RV64C = union(enum) {
             .C_FSDSP => |i| writer.print("C_FSDSP {s}, 0x{x}\n", .{ i.rd.name(), i.uimm }),
             .C_LD => |i| writer.print("C_LD {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), i.uimm }),
             .C_FLD => |i| writer.print("C_FLD {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), i.uimm }),
+            .C_SD => |i| writer.print("C_SD {s}, {s}, 0x{x}\n", .{ i.rs1.name(), i.rs2.name(), i.uimm }),
             .C_ADDIW => |i| writer.print("C_ADDIW {s}, {x}\n", .{ i.rd.name(), i.imm }),
             .C_ADDW => |i| writer.print("C_ADDW {s}, {s}\n", .{ i.rd.name(), i.rs2.name() }),
             .C_SUBW => |i| writer.print("C_SUBW {s}, {s}\n", .{ i.rd.name(), i.rs2.name() }),
@@ -1163,6 +1314,7 @@ pub const RV64C = union(enum) {
             .C_FSDSP => |i| .{ i.rd, IR.ZERO, IR.ZERO },
             .C_LD => |i| .{ i.rd.to_reg(), i.rs1.to_reg(), IR.ZERO },
             .C_FLD => |i| .{ i.rd.to_reg(), i.rs1.to_reg(), IR.ZERO },
+            .C_SD => |i| .{ i.rs1.to_reg(), i.rs2.to_reg(), IR.ZERO },
             .C_ADDIW => |i| .{ i.rd, IR.ZERO, IR.ZERO },
             .C_ADDW => |i| .{ i.rd.to_reg(), i.rs2.to_reg(), IR.ZERO },
             .C_SUBW => |i| .{ i.rd.to_reg(), i.rs2.to_reg(), IR.ZERO },
@@ -1177,6 +1329,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
             z_iscr: Ziscr,
             rv32m: RV32M,
             rv32c: RV32C,
+            rv32z_aamo: RV32Zaamo,
 
             const Self = @This();
 
@@ -1186,6 +1339,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .z_iscr => |i| i.to_memory(memory),
                     .rv32m => |i| i.to_memory(memory),
                     .rv32c => |i| i.to_memory(memory),
+                    .rv32z_aamo => |i| i.to_memory(memory),
                 };
             }
 
@@ -1203,6 +1357,9 @@ pub fn build_asm(comptime arch: base.Arch) type {
                 if (RV32C.from_memory(v)) |i| {
                     return .{ .rv32c = i };
                 }
+                if (RV32Zaamo.from_memory(v)) |i| {
+                    return .{ .rv32z_aamo = i };
+                }
 
                 v.debug();
                 return error.Unimplemented;
@@ -1214,6 +1371,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .z_iscr => |i| i.len(),
                     .rv32m => |i| i.len(),
                     .rv32c => |i| i.len(),
+                    .rv32z_aamo => |i| i.len(),
                 };
             }
 
@@ -1223,6 +1381,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .z_iscr => |i| i.write(writer),
                     .rv32m => |i| i.write(writer),
                     .rv32c => |i| i.write(writer),
+                    .rv32z_aamo => |i| i.write(writer),
                 };
             }
 
@@ -1232,6 +1391,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .z_iscr => |i| i.used_grs(),
                     .rv32m => |i| i.used_grs(),
                     .rv32c => |i| i.used_grs(),
+                    .rv32z_aamo => |i| i.used_grs(),
                 };
             }
         },
@@ -1243,6 +1403,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
             rv32c: RV32C,
             rv64m: RV64M,
             rv64c: RV64C,
+            rv32z_aamo: RV32Zaamo,
 
             const Self = @This();
 
@@ -1255,6 +1416,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv64m => |i| i.to_memory(memory),
                     .rv32c => |i| i.to_memory(memory),
                     .rv64c => |i| i.to_memory(memory),
+                    .rv32z_aamo => |i| i.to_memory(memory),
                 };
             }
 
@@ -1281,6 +1443,9 @@ pub fn build_asm(comptime arch: base.Arch) type {
                 if (RV32C.from_memory(v)) |i| {
                     return .{ .rv32c = i };
                 }
+                if (RV32Zaamo.from_memory(v)) |i| {
+                    return .{ .rv32z_aamo = i };
+                }
 
                 v.debug();
                 return error.Unimplemented;
@@ -1295,6 +1460,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv64m => |i| i.len(),
                     .rv32c => |i| i.len(),
                     .rv64c => |i| i.len(),
+                    .rv32z_aamo => |i| i.len(),
                 };
             }
 
@@ -1307,6 +1473,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv64m => |i| i.write(writer),
                     .rv32c => |i| i.write(writer),
                     .rv64c => |i| i.write(writer),
+                    .rv32z_aamo => |i| i.write(writer),
                 };
             }
 
@@ -1319,6 +1486,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv64m => |i| i.used_grs(),
                     .rv32c => |i| i.used_grs(),
                     .rv64c => |i| i.used_grs(),
+                    .rv32z_aamo => |i| i.used_grs(),
                 };
             }
         },

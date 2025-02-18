@@ -103,6 +103,58 @@ pub const Arch = enum {
     }
 };
 
+inline fn BIT(FROM: type, TO: type, from: FROM, fi: comptime_int, ti: comptime_int) TO {
+    const trunc = @typeInfo(FROM).Int.bits > @typeInfo(TO).Int.bits;
+    return (@as(TO, if (trunc) @truncate(from >> fi) else from >> fi) & 1) << ti;
+}
+
+inline fn BITS(FROM: type, TO: type, from: FROM, bfi: comptime_int, sfi: comptime_int, ti: comptime_int) TO {
+    const trunc = @typeInfo(FROM).Int.bits > @typeInfo(TO).Int.bits;
+    return (@as(TO, if (trunc) @truncate(from >> bfi) else from >> bfi) & (std.math.maxInt(TO) ^ @shlWithOverflow(@as(TO, std.math.maxInt(TO)), sfi)[0])) << ti;
+}
+
+pub inline fn rearrange(FROM: type, TO: type, from: FROM, comptime steps: []const [3]comptime_int) TO {
+    var out: TO = 0;
+    inline for (steps) |step| {
+        if (step[1] == 1) {
+            out |= BIT(FROM, TO, from, step[0], step[2]);
+        } else {
+            out |= BITS(FROM, TO, from, step[0], step[1], step[2]);
+        }
+    }
+    return out;
+}
+
+pub inline fn rev_rearrange(FROM: type, TO: type, from: FROM, comptime steps: []const [3]comptime_int) TO {
+    var out: TO = 0;
+    inline for (steps) |step| {
+        if (step[1] == 1) {
+            out |= BIT(FROM, TO, from, step[2], step[0]);
+        } else {
+            out |= BITS(FROM, TO, from, step[2], step[1], step[0]);
+        }
+    }
+    return out;
+}
+
+pub const @"imm_2|6" = .{ .{ 0, 1, 6 }, .{ 1, 1, 2 } };
+pub const @"imm_4:1|11" = .{ .{ 0, 1, 11 }, .{ 1, 4, 1 } };
+pub const @"imm_4:2|7:6" = .{ .{ 0, 2, 6 }, .{ 2, 3, 2 } };
+pub const @"imm_4:3|8:6" = .{ .{ 0, 3, 6 }, .{ 3, 2, 3 } };
+pub const @"imm_4|6|8:7|5" = .{ .{ 0, 1, 5 }, .{ 1, 2, 7 }, .{ 3, 1, 6 }, .{ 4, 1, 4 } };
+pub const imm_5 = .{.{ 0, 1, 5 }};
+pub const @"imm_5:3" = .{.{ 0, 3, 3 }};
+pub const @"imm_5|4|8" = .{ .{ 0, 1, 8 }, .{ 1, 1, 4 }, .{ 2, 1, 5 } };
+pub const @"imm_5:2|7:6" = .{ .{ 0, 2, 6 }, .{ 2, 4, 2 } };
+pub const @"imm_5:3|8:6" = .{ .{ 0, 3, 6 }, .{ 3, 3, 3 } };
+pub const @"imm_5:4|9:6|2|3" = .{ .{ 0, 1, 3 }, .{ 1, 1, 2 }, .{ 2, 4, 6 }, .{ 6, 2, 4 } };
+pub const @"imm_7:6" = .{.{ 0, 2, 6 }};
+pub const @"imm_7:6|2:1|5" = .{ .{ 0, 1, 5 }, .{ 1, 2, 1 }, .{ 3, 2, 6 } };
+pub const @"imm_8|4:3" = .{ .{ 0, 2, 3 }, .{ 2, 1, 8 } };
+pub const @"imm_11|4|9:8|10|6|7|3:1|5" = .{ .{ 0, 1, 5 }, .{ 1, 3, 1 }, .{ 4, 1, 7 }, .{ 5, 1, 6 }, .{ 6, 1, 10 }, .{ 7, 2, 8 }, .{ 9, 1, 4 }, .{ 10, 1, 11 } };
+pub const @"imm_12|10:5" = .{ .{ 0, 6, 5 }, .{ 6, 1, 12 } };
+pub const @"imm_20|10:1|11|19:12" = .{ .{ 0, 8, 12 }, .{ 8, 1, 11 }, .{ 9, 10, 1 }, .{ 19, 1, 20 } };
+
 pub const CSRAddr = enum(u12) {
     // RISC-V unprivileged
 
@@ -514,8 +566,21 @@ pub const CSRAddr = enum(u12) {
     dscratch0 = 0x7B2,
     dscratch1 = 0x7B3,
 
+    pub fn from_u12(value: u12) ?@This() {
+        return @enumFromInt(value);
+    }
+
     pub fn to_u12(self: @This()) u12 {
         return @intFromEnum(self);
+    }
+
+    pub fn name(self: @This()) ?[]const u8 {
+        inline for (@typeInfo(@This()).Enum.fields) |field| {
+            if (field.value == self.to_u12()) {
+                return field.name;
+            }
+        }
+        return null;
     }
 };
 
@@ -524,11 +589,9 @@ pub const CSRAddrU = union(enum) {
     unknown: u12,
 
     pub fn from_u12(value: u12) @This() {
-        if (std.meta.intToEnum(CSRAddr, value)) |known| {
-            return .{ .known = known };
-        } else {
+        return .{ .known = std.meta.intToEnum(CSRAddr, value) catch {
             return .{ .unknown = value };
-        }
+        } };
     }
 
     pub fn to_u12(self: @This()) u12 {
@@ -536,6 +599,27 @@ pub const CSRAddrU = union(enum) {
             .knwon => |v| v.to_u12(),
             .unknwon => |u| u,
         };
+    }
+
+    var buffer = std.mem.zeroes([8]u8);
+
+    pub fn name(self: @This()) []const u8 {
+        switch (self) {
+            .known => |csr| {
+                if (csr.name()) |csr_name| {
+                    return csr_name;
+                } else {
+                    unreachable;
+                }
+            },
+            .unknown => |num| {
+                var stream = std.io.fixedBufferStream(&buffer);
+                std.fmt.format(stream.writer(), "0x{x}", .{num}) catch {
+                    unreachable;
+                };
+                return &buffer;
+            },
+        }
     }
 };
 
@@ -671,21 +755,19 @@ pub const InstrFormatX32 = packed union {
         imm_11_5: u7,
 
         pub fn get_imm(self: @This()) i12 {
-            return @bitCast((@as(u12, self.imm_11_5) << 5) + @as(u12, self.imm_4_0));
+            return @bitCast((@as(u12, self.imm_11_5) << 5) | @as(u12, self.imm_4_0));
         }
     };
     pub const B = packed struct {
         opcode: u7,
-        imm_11: u1,
-        imm_4_1: u4,
+        offset1: u5,
         funct3: u3,
         rs1: u5,
         rs2: u5,
-        imm_10_5: u6,
-        imm_12: u1,
+        offset2: u7,
 
-        pub fn get_imm(self: @This()) i12 {
-            return @bitCast((@as(u12, self.imm_12) << 11) + (@as(u12, self.imm_11) << 10) + (@as(u12, self.imm_10_5) << 4) + @as(u12, self.imm_4_1));
+        pub fn get_imm(self: @This()) i13 {
+            return @bitCast(rearrange(u7, u13, self.offset2, &@"imm_12|10:5") | rearrange(u5, u13, self.offset1, &@"imm_4:1|11"));
         }
     };
     pub const U = packed struct { opcode: u7, rd: u5, imm_31_12: u20 };
@@ -696,11 +778,9 @@ pub const InstrFormatX32 = packed union {
         b_11: u1,
         imm_10_1: u10,
         b_20: u1,
-
-        pub fn get_imm(self: @This()) i20 {
-            return @bitCast((@as(u20, self.b_20) << 19) + (@as(u20, self.b_11) << 10) + (@as(u20, self.imm_19_12) << 11) + @as(u20, self.imm_10_1));
-        }
     };
+
+    pub const JImm = packed struct { opcode: u7, rd: u5, imm: u20 };
     pub const F = packed struct { opcode: u7, rd: u5, func3: u3, rs1: u5, succ: FFlags, pred: FFlags, fm: u4 };
 
     opcode: u7,
@@ -711,6 +791,7 @@ pub const InstrFormatX32 = packed union {
     b: B,
     u: U,
     j: J,
+    jimm: JImm,
     f: F,
 
     const Self = @This();
@@ -759,7 +840,7 @@ pub const InstrFormatX16 = packed union {
         }
 
         pub fn rs1(self: @This()) u5 {
-            return @as(u5, self.rs1) + 8;
+            return @as(u5, self.prs1) + 8;
         }
     };
 
@@ -776,7 +857,7 @@ pub const InstrFormatX16 = packed union {
         }
 
         pub fn rs1(self: @This()) u5 {
-            return @as(u5, self.rs1) + 8;
+            return @as(u5, self.prs1) + 8;
         }
     };
 
@@ -842,4 +923,121 @@ pub const InstrFormatX16 = packed union {
     pub fn debug(self: Self) void {
         std.debug.print("X16 Instr: {b:0>16}\n", .{self.to_u16()});
     }
+};
+
+pub const X64CAUSE_Instruction_address_misaligned: u64 = 0;
+pub const X64CAUSE_Instruction_acces_falut: u64 = 1;
+pub const X64CAUSE_Illegal_instruction: u64 = 2;
+pub const X64CAUSE_Illegal_breakpoint: u64 = 3;
+pub const X64CAUSE_Enviroment_call_from_U_mode: u64 = 8;
+
+pub const X64MTVEC = packed struct {
+    mode: u2,
+    base: u62,
+};
+
+pub const X64MStatus = packed struct {
+    WPRI0: u1,
+    SIE: u1,
+    WPRI1: u1,
+    MIE: u1,
+    WPRI2: u1,
+    SPIE: u1,
+    UBE: u1,
+    MPIE: u1,
+    SPP: u1,
+    VS: u2,
+    MPP: u2,
+    FS: u2,
+    XS: u2,
+    MPRV: u1,
+    SUM: u1,
+    MXR: u1,
+    TVM: u1,
+    TW: u1,
+    TSR: u1,
+    SPELP: u1,
+    SDT: u1,
+    WPRI3: u7,
+    UXL: u2,
+    SXL: u2,
+    SBE: u1,
+    MBE: u1,
+    GVA: u1,
+    MPV: u1,
+    WPRI4: u1,
+    MPELP: u1,
+    MDT: u1,
+    WPRI5: u20,
+    SD: u1,
+};
+
+pub const X64MIP = packed struct {
+    _zero0: u1,
+    SSIP: u1,
+    _zero1: u1,
+    MSIP: u1,
+    _zero2: u1,
+    STIP: u1,
+    _zero3: u1,
+    MTIP: u1,
+    _zero4: u1,
+    SEIP: u1,
+    _zero5: u1,
+    MEIP: u1,
+    _zero6: u1,
+    LCOFIP: u1,
+    _zero7: u2,
+    platform: u48,
+};
+
+pub const X64MIE = packed struct {
+    _zero0: u1,
+    SSIE: u1,
+    _zero1: u1,
+    MSIE: u1,
+    _zero2: u1,
+    STIE: u1,
+    _zero3: u1,
+    MTIE: u1,
+    _zero4: u1,
+    SEIE: u1,
+    _zero5: u1,
+    MEIE: u1,
+    _zero6: u1,
+    LCOFIE: u1,
+    _zero7: u2,
+    platform: u48,
+};
+
+pub const X64MNStatus = packed struct {
+    _reserved0: u3,
+    NMIE: u1,
+    _reserved1: u3,
+    MNPV: u1,
+    _reserved2: u1,
+    MNPELP: u1,
+    _reserved3: u1,
+    MNPP: u2,
+    _reserved4: u51,
+};
+
+pub const PMPCFG = packed struct {
+    R: u1,
+    W: u1,
+    X: u1,
+    A: u2,
+    _zero: u2,
+    L: u1,
+};
+
+pub const X64PMPCFG = packed struct {
+    pmpcfg0: PMPCFG,
+    pmpcfg1: PMPCFG,
+    pmpcfg2: PMPCFG,
+    pmpcfg3: PMPCFG,
+    pmpcfg4: PMPCFG,
+    pmpcfg5: PMPCFG,
+    pmpcfg6: PMPCFG,
+    pmpcfg7: PMPCFG,
 };

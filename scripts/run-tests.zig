@@ -29,7 +29,7 @@ pub fn main() !void {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    try utils.run(alloc, &.{ "zig", "build" });
+    try utils.run(alloc, &.{ "zig", "build", "test-runner" });
 
     const cwd = try std.fs.cwd().realpathAlloc(alloc, ".");
     const test_runner_path = try std.fs.cwd().realpathAlloc(alloc, "zig-out/bin/rvman-test-runner");
@@ -80,6 +80,7 @@ pub fn main() !void {
             if (!try std.process.hasEnvVar(alloc, "SIMPLE")) {
                 print("Stdout: {s}\n", .{result.stdout});
                 print("Stderr: {s}\n", .{result.stderr});
+                print("Failed: {s}\n", .{entry.name});
             }
         } else |_| {}
     }
