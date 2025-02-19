@@ -54,6 +54,12 @@ pub fn main() !void {
             }
         }
 
+        if (std.mem.eql(u8, cpu_meta[0..4], "RV64")) {
+            if (std.mem.startsWith(u8, entry.name, "rv32")) {
+                continue;
+            }
+        }
+
         if (filter.len != 0 and !std.mem.startsWith(u8, entry.name, filter)) {
             continue;
         }
