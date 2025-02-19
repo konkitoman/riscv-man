@@ -32,7 +32,7 @@ pub const MemoryMap = struct {
 pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
     const uarch = arch.uarch();
     const iarch = arch.iarch();
-    const bits: comptime_int = @typeInfo(uarch).Int.bits;
+    const bits = arch.bytes();
     const stype: type = switch (arch) {
         .X32 => u5,
         .X64 => u6,
@@ -90,10 +90,12 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
             }
         };
 
+        pub const CSRS = base.buildCSRS(arch);
+
         pub const Hart = struct {
             g_regs: [32]uarch,
             pc: uarch,
-            csrs: [4096]uarch,
+            csrs: CSRS,
             mode: HartMode,
 
             pub fn step(self: *Hart, cpu: *CPU) !void {
@@ -199,56 +201,29 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                 } else |e| print("When reading VarInstr at {x}, an error acured: {}\n", .{ self.pc, e });
             }
 
-            fn trap(self: *@This(), mode: HartMode, cause: uarch) void {
-                switch (arch) {
-                    .X32 => {
-                        var mstatus: base.X32MSTATUS = @bitCast(self.csrs[CSRAddr.mstatus.to_u12()]);
-                        mstatus.MPP = self.mode.to_u2();
-                        self.mode = mode;
-                        self.csrs[CSRAddr.mepc.to_u12()] = self.pc;
-                        self.csrs[CSRAddr.mcause.to_u12()] = cause;
-                        const mtvec: base.X32MTVEC = @bitCast(self.csrs[CSRAddr.mtvec.to_u12()]);
-                        switch (mtvec.mode) {
-                            0 => { // DIRECT
-                                self.pc = @as(u32, mtvec.base) << 2;
-                            },
-                            1 => { // VECTORED
-                                // TODO: Implement VECTORED
-                                @panic("VECTORED not implemented!");
-                                // self.pc = (mtvec ^ (mtvec & 0b11)) + (4 * (cause & 0xffffffff));
-                            },
-                            else => {
-                                @panic("Unknown MTVEC Mode!");
-                            },
-                        }
+            fn trap(self: *@This(), mode: HartMode, mcause: CSRS.MCAUSE) void {
+                self.csrs.mstatus.MPP = self.mode.to_u2();
+                self.mode = mode;
+                self.csrs.mepc = self.pc;
+                self.csrs.mcause = mcause;
+                const mtvec = self.csrs.mtvec;
+                switch (mtvec.mode) {
+                    0 => { // DIRECT
+                        self.pc = @as(uarch, mtvec.base) << 2;
                     },
-                    .X64 => {
-                        var mstatus: base.X64MStatus = @bitCast(self.csrs[CSRAddr.mstatus.to_u12()]);
-                        mstatus.MPP = self.mode.to_u2();
-                        self.csrs[CSRAddr.mstatus.to_u12()] = @bitCast(mstatus);
-                        self.mode = mode;
-                        self.csrs[CSRAddr.mepc.to_u12()] = self.pc;
-                        self.csrs[CSRAddr.mcause.to_u12()] = cause;
-                        const mtvec = @as(base.X64MTVEC, @bitCast(self.csrs[CSRAddr.mtvec.to_u12()]));
-                        switch (mtvec.mode) {
-                            0 => { // DIRECT
-                                self.pc = @as(u64, mtvec.base) << 2;
-                            },
-                            1 => { // VECTORED
-                                // TODO: Implement VECTORED
-                                @panic("VECTORED not implemented!");
-                                // self.pc = (mtvec ^ (mtvec & 0b11)) + (4 * (cause & 0xffffffff));
-                            },
-                            else => {
-                                @panic("Unknown MTVEC Mode!");
-                            },
-                        }
+                    1 => { // VECTORED
+                        // TODO: Implement VECTORED
+                        @panic("VECTORED not implemented!");
+                        // self.pc = (mtvec ^ (mtvec & 0b11)) + (4 * (cause & 0xffffffff));
+                    },
+                    else => {
+                        @panic("Unknown MTVEC Mode!");
                     },
                 }
             }
 
-            fn has_csr_permisions(self: @This(), addr: u12) Permisions {
-                switch (self.mode) {
+            fn has_csr_permisions(mode: HartMode, addr: u12) Permisions {
+                switch (mode) {
                     .U => {
                         if (addr >= 0x000 and 0x0FF > addr) {
                             return .ReadWrite;
@@ -294,6 +269,7 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                         if (addr >= 0xDC0 and 0xDFF > addr) {
                             return .Read;
                         }
+                        return has_csr_permisions(.U, addr);
                     },
                     .H => {
                         if (addr >= 0x200 and 0x2FF > addr) {
@@ -329,6 +305,7 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                         if (addr >= 0xEC0 and 0xEFF > addr) {
                             return .ReadWrite;
                         }
+                        return has_csr_permisions(.S, addr);
                     },
                     .M => {
                         if (addr >= 0x300 and 0x3FF > addr) {
@@ -367,73 +344,38 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                         if (addr >= 0xFC0 and 0xFFF > addr) {
                             return .ReadWrite;
                         }
+                        return has_csr_permisions(.H, addr);
                     },
                 }
 
                 return .None;
             }
 
-            fn csr_store(self: *@This(), csr_addr: u12, value: uarch) void {
+            fn csr_store(self: *@This(), csr_addr: u12, value: uarch) !void {
                 switch (csr_addr) {
-                    CSRAddr.mtvec.to_u12(), CSRAddr.mepc.to_u12(), CSRAddr.medeleg.to_u12(), CSRAddr.mideleg.to_u12() => self.csrs[csr_addr] = value,
-                    CSRAddr.mstatus.to_u12() => {
-                        if (arch == .X64) {
-                            const data = @as(base.X64MStatus, @bitCast(value));
-                            print("{}\n", .{data});
-                        }
-                        self.csrs[csr_addr] = value;
-                    },
-                    CSRAddr.pmpaddr0.to_u12() => {
-                        self.csrs[csr_addr] = value;
-                    },
-                    CSRAddr.sie.to_u12() => {
-                        self.csrs[CSRAddr.mie.to_u12()] = (self.csrs[CSRAddr.mie.to_u12()] & -%self.csrs[CSRAddr.mideleg.to_u12()]) | (value & self.csrs[CSRAddr.mideleg.to_u12()]);
-                    },
-                    CSRAddr.mie.to_u12() => {
-                        if (arch == .X64) {
-                            const data = @as(base.X64MIE, @bitCast(value));
-                            print("{}\n", .{data});
-                        }
-                        self.csrs[csr_addr] = value;
-                    },
-                    CSRAddr.mnstatus.to_u12() => {
-                        if (arch == .X64) {
-                            const data = @as(base.X64MNStatus, @bitCast(value));
-                            print("{}\n", .{data});
-                        }
-                        self.csrs[CSRAddr.mnstatus.to_u12()] = value;
-                    },
-                    CSRAddr.pmpcfg0.to_u12(), CSRAddr.pmpcfg2.to_u12(), CSRAddr.pmpcfg4.to_u12(), CSRAddr.pmpcfg6.to_u12(), CSRAddr.pmpcfg8.to_u12(), CSRAddr.pmpcfg10.to_u12(), CSRAddr.pmpcfg12.to_u12(), CSRAddr.pmpcfg14.to_u12() => {
-                        if (arch == .X64) {
-                            const data = @as(base.X64PMPCFG, @bitCast(value));
-                            print("{}\n", .{data});
-                        }
-
-                        self.csrs[csr_addr] = value;
-                    },
+                    CSRAddr.mstatus.to_u12() => self.csrs.mstatus = @bitCast(value),
+                    CSRAddr.mtvec.to_u12() => self.csrs.mtvec = @bitCast(value),
+                    CSRAddr.mepc.to_u12() => self.csrs.mepc = value,
+                    CSRAddr.mcause.to_u12() => self.csrs.mcause = @bitCast(value),
+                    CSRAddr.mie.to_u12() => self.csrs.mie = @bitCast(value),
                     else => {
                         print("CSR_STORE: Unknown CSR\n", .{});
-                        @breakpoint();
-                        self.csrs[csr_addr] = value;
+                        return error.UnknownCSR;
                     },
                 }
             }
 
-            fn csr_load(self: *@This(), csr_addr: u12) uarch {
-                const tmp = self.csrs[csr_addr];
+            fn csr_load(self: *@This(), csr_addr: u12) !uarch {
                 switch (csr_addr) {
-                    CSRAddr.mhartid.to_u12(),
-                    CSRAddr.mstatus.to_u12(),
-                    CSRAddr.mepc.to_u12(),
-                    CSRAddr.medeleg.to_u12(),
-                    CSRAddr.mideleg.to_u12(),
-                    CSRAddr.mcause.to_u12(),
-                    => return tmp,
-                    CSRAddr.sie.to_u12() => return self.csrs[CSRAddr.mie.to_u12()] & self.csrs[CSRAddr.mideleg.to_u12()],
+                    CSRAddr.mhartid.to_u12() => return self.csrs.mhartid,
+                    CSRAddr.mstatus.to_u12() => return @bitCast(self.csrs.mstatus),
+                    CSRAddr.mtvec.to_u12() => return @bitCast(self.csrs.mtvec),
+                    CSRAddr.mepc.to_u12() => return self.csrs.mepc,
+                    CSRAddr.mcause.to_u12() => return @bitCast(self.csrs.mcause),
+                    CSRAddr.mie.to_u12() => return @bitCast(self.csrs.mie),
                     else => {
                         print("CSR_LOAD: Unknown CSR\n", .{});
-                        @breakpoint();
-                        return tmp;
+                        return error.UnknownCSR;
                     },
                 }
             }
@@ -902,10 +844,10 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                 _ = cpu;
                 switch (instr.i.funct3) {
                     0b000 => switch (instr.i.imm_11_0) {
-                        0 => {
+                        0 => { // ECALL
                             switch (self.mode) {
                                 .U => {
-                                    self.trap(.M, 8); // Environment call from U-mode
+                                    self.trap(.M, CSRS.MCAUSE.ECallFromU); // Environment call from U-mode
                                     return;
                                 },
                                 else => {
@@ -917,38 +859,23 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                             return error.Break;
                         },
                         0b000100000010 => { // SRET
-                            self.pc = self.csrs[CSRAddr.sepc.to_u12()];
                             @panic("TODO: SRET Not implemented!");
                         },
                         0b001100000010 => { // MRET
                             if (self.mode != .M) {
                                 std.debug.print("MRET: HartMode is not M, is {s}\n", .{self.mode.name()});
-                                self.trap(.M, base.X64CAUSE_Illegal_instruction);
+                                self.trap(.M, CSRS.MCAUSE.IllegalInstruction);
                                 return;
                             }
-                            self.pc = self.csrs[CSRAddr.mepc.to_u12()];
-                            switch (arch) {
-                                .X32 => {
-                                    var mstatus: base.X32MSTATUS = @bitCast(self.csrs[CSRAddr.mstatus.to_u12()]);
-                                    self.csrs[CSRAddr.mie.to_u12()] = mstatus.MIE;
-                                    self.mode = HartMode.from_u2(mstatus.MPP);
-                                    mstatus.MIE = 1;
-                                    mstatus.MPP = HartMode.U.to_u2();
-                                    self.csrs[CSRAddr.mstatus.to_u12()] = @bitCast(mstatus);
-                                },
-                                .X64 => {
-                                    var mstatus = @as(base.X64MStatus, @bitCast(self.csrs[CSRAddr.mstatus.to_u12()]));
-                                    self.csrs[CSRAddr.mie.to_u12()] = mstatus.MIE;
-                                    self.mode = HartMode.from_u2(mstatus.MPP);
-                                    mstatus.MIE = 1;
-                                    mstatus.MPP = HartMode.U.to_u2();
-                                    self.csrs[CSRAddr.mstatus.to_u12()] = @bitCast(mstatus);
-                                },
-                            }
+                            self.pc = self.csrs.mepc;
+                            const mstatus = &self.csrs.mstatus;
+                            mstatus.MIE = mstatus.MPIE;
+                            self.mode = HartMode.from_u2(mstatus.MPP);
+                            mstatus.MPIE = 1;
+                            mstatus.MPP = HartMode.U.to_u2();
                             return;
                         },
                         0b011100000010 => { // MNRET
-                            self.pc = self.csrs[CSRAddr.mnepc.to_u12()];
                             @panic("TODO: MNRET Not implemented");
                         },
                         else => {
@@ -959,100 +886,136 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                     // CSRRW
                     0b001 => {
                         const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
-                        const per = self.has_csr_permisions(csr_addr);
+                        const per = has_csr_permisions(self.mode, csr_addr);
                         if (!(per.read() and per.write())) {
                             print("No permissions of CSR", .{});
-                            self.trap(.M, base.X64CAUSE_Instruction_acces_falut);
+                            self.trap(.M, CSRS.MCAUSE.IllegalInstruction);
                             return;
                         }
                         if (instr.i.rd != 0) {
-                            self.g_regs[instr.i.rd] = self.csr_load(csr_addr);
+                            self.g_regs[instr.i.rd] = self.csr_load(csr_addr) catch {
+                                self.trap(.M, CSRS.MCAUSE.IllegalInstruction);
+                                return;
+                            };
                         }
-                        self.csr_store(csr_addr, self.g_regs[instr.i.rs1]);
+                        self.csr_store(csr_addr, self.g_regs[instr.i.rs1]) catch {
+                            self.trap(.M, CSRS.MCAUSE.IllegalInstruction);
+                            return;
+                        };
                     },
                     // CSRRS
                     0b010 => {
                         const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
-                        const per = self.has_csr_permisions(csr_addr);
-                        const tmp = self.csr_load(csr_addr);
+                        const per = has_csr_permisions(self.mode, csr_addr);
+                        const tmp = self.csr_load(csr_addr) catch {
+                            self.trap(.M, CSRS.MCAUSE.IllegalInstruction);
+                            return;
+                        };
                         if (!(per.read() and per.write())) {
                             print("No permissions of CSR", .{});
-                            self.trap(.M, base.X64CAUSE_Instruction_acces_falut);
+                            self.trap(.M, CSRS.MCAUSE.IllegalInstruction);
                             return;
                         }
                         if (instr.i.rd != 0) {
                             self.g_regs[instr.i.rd] = tmp;
                         }
                         if (instr.i.rs1 != 0) {
-                            self.csr_store(csr_addr, tmp & self.g_regs[instr.i.rs1]);
+                            self.csr_store(csr_addr, tmp & self.g_regs[instr.i.rs1]) catch {
+                                self.trap(.M, CSRS.MCAUSE.IllegalInstruction);
+                                return;
+                            };
                         }
                     },
                     // CSRRC
                     0b011 => {
                         const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
-                        const per = self.has_csr_permisions(csr_addr);
-                        const tmp = self.csr_load(csr_addr);
+                        const per = has_csr_permisions(self.mode, csr_addr);
+                        const tmp = self.csr_load(csr_addr) catch {
+                            self.trap(.M, CSRS.MCAUSE.IllegalInstruction);
+                            return;
+                        };
                         if (!(per.read() and per.write())) {
                             print("No permissions of CSR", .{});
-                            self.trap(.M, base.X64CAUSE_Instruction_acces_falut);
+                            self.trap(.M, CSRS.MCAUSE.IllegalInstruction);
                             return;
                         }
                         if (instr.i.rd != 0) {
                             self.g_regs[instr.i.rd] = tmp;
                         }
                         if (instr.i.rs1 != 0) {
-                            self.csr_store(csr_addr, tmp ^ (self.g_regs[instr.i.rs1] & tmp));
+                            self.csr_store(csr_addr, tmp ^ (self.g_regs[instr.i.rs1] & tmp)) catch {
+                                self.trap(.M, CSRS.MCAUSE.IllegalInstruction);
+                                return;
+                            };
                         }
                     },
                     // CSRRWI
                     0b101 => {
                         const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
-                        const per = self.has_csr_permisions(csr_addr);
+                        const per = has_csr_permisions(self.mode, csr_addr);
                         const value: uarch = @as(u5, @bitCast(instr.i.rs1));
                         if (!(per.read() and per.write())) {
                             print("No permissions of CSR\n", .{});
-                            self.trap(.M, base.X64CAUSE_Instruction_acces_falut);
+                            self.trap(.M, CSRS.MCAUSE.IllegalInstruction);
                             return;
                         }
                         if (instr.i.rd != 0) {
-                            self.g_regs[instr.i.rd] = self.csr_load(csr_addr);
+                            self.g_regs[instr.i.rd] = self.csr_load(csr_addr) catch {
+                                self.trap(.M, CSRS.MCAUSE.IllegalInstruction);
+                                return;
+                            };
                         }
-                        self.csr_store(csr_addr, value);
+                        self.csr_store(csr_addr, value) catch {
+                            self.trap(.M, CSRS.MCAUSE.IllegalInstruction);
+                            return;
+                        };
                     },
                     // CSRRSI
                     0b110 => {
                         const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
-                        const per = self.has_csr_permisions(csr_addr);
+                        const per = has_csr_permisions(self.mode, csr_addr);
                         const value: uarch = @as(u5, @bitCast(instr.i.rs1));
-                        const tmp = self.csr_load(csr_addr);
+                        const tmp = self.csr_load(csr_addr) catch {
+                            self.trap(.M, CSRS.MCAUSE.IllegalInstruction);
+                            return;
+                        };
                         if (!(per.read() and per.write())) {
                             print("No permissions of CSR\n", .{});
-                            self.trap(.M, base.X64CAUSE_Instruction_acces_falut);
+                            self.trap(.M, CSRS.MCAUSE.IllegalInstruction);
                             return;
                         }
                         if (instr.i.rd == 0) {
                             self.g_regs[instr.i.rd] = tmp;
                         }
                         if (value != 0) {
-                            self.csr_store(csr_addr, tmp & value);
+                            self.csr_store(csr_addr, tmp & value) catch {
+                                self.trap(.M, CSRS.MCAUSE.IllegalInstruction);
+                                return;
+                            };
                         }
                     },
                     // CSRRCI
                     0b111 => {
                         const csr_addr: u12 = @bitCast(instr.i.imm_11_0);
-                        const per = self.has_csr_permisions(csr_addr);
+                        const per = has_csr_permisions(self.mode, csr_addr);
                         const value: uarch = @as(u5, @bitCast(instr.i.rs1));
-                        const tmp = self.csr_load(csr_addr);
+                        const tmp = self.csr_load(csr_addr) catch {
+                            self.trap(.M, CSRS.MCAUSE.IllegalInstruction);
+                            return;
+                        };
                         if (!(per.read() and per.write())) {
                             print("No permissions of CSR\n", .{});
-                            self.trap(.M, base.X64CAUSE_Instruction_acces_falut);
+                            self.trap(.M, CSRS.MCAUSE.IllegalInstruction);
                             return;
                         }
                         if (instr.i.rd != 0) {
                             self.g_regs[instr.i.rd] = tmp;
                         }
                         if (value != 0) {
-                            self.csr_store(csr_addr, tmp ^ (value & tmp));
+                            self.csr_store(csr_addr, tmp ^ (value & tmp)) catch {
+                                self.trap(.M, CSRS.MCAUSE.IllegalInstruction);
+                                return;
+                            };
                         }
                     },
                     else => {
@@ -1219,15 +1182,15 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
             }
 
             fn c_or(self: *@This(), instr: InstrFX16) void {
-                if (instr.cr.rd != 0) {
-                    self.g_regs[instr.cr.rd] |= self.g_regs[instr.cr.rs2];
+                if (instr.ca.rd() != 0) {
+                    self.g_regs[instr.ca.rd()] |= self.g_regs[instr.ca.rs2()];
                 }
                 self.pc += 2;
             }
 
             fn c_and(self: *@This(), instr: InstrFX16) void {
-                if (instr.cr.rd != 0) {
-                    self.g_regs[instr.cr.rd] &= self.g_regs[instr.cr.rs2];
+                if (instr.ca.rd() != 0) {
+                    self.g_regs[instr.ca.rd()] &= self.g_regs[instr.ca.rs2()];
                 }
                 self.pc += 2;
             }
@@ -1318,7 +1281,7 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
             for (&cpu.harts, 0..) |*hart, i| {
                 hart.mode = .M;
 
-                hart.csrs[CSRAddr.mhartid.to_u12()] = @truncate(i);
+                hart.csrs.mhartid = @truncate(i);
             }
 
             return cpu;

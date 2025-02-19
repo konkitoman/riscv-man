@@ -101,6 +101,10 @@ pub const Arch = enum {
             .X64 => i64,
         };
     }
+
+    pub fn bytes(self: @This()) u16 {
+        return @typeInfo(self.uarch()).Int.bits;
+    }
 };
 
 inline fn BIT(FROM: type, TO: type, from: FROM, fi: comptime_int, ti: comptime_int) TO {
@@ -246,7 +250,7 @@ pub const CSRAddr = enum(u12) {
     sip = 0x144,
     scountovf = 0xDA0,
 
-    stap = 0x180,
+    satp = 0x180,
 
     scontext = 0x5A8,
 
@@ -870,7 +874,7 @@ pub const InstrFormatX16 = packed union {
         funct3: u3,
 
         pub fn rs2(self: @This()) u5 {
-            return @as(u5, self.rs2) + 8;
+            return @as(u5, self.prs2) + 8;
         }
 
         pub fn rd(self: @This()) u5 {
@@ -925,162 +929,132 @@ pub const InstrFormatX16 = packed union {
     }
 };
 
-pub const X64CAUSE_Instruction_address_misaligned: u64 = 0;
-pub const X64CAUSE_Instruction_acces_falut: u64 = 1;
-pub const X64CAUSE_Illegal_instruction: u64 = 2;
-pub const X64CAUSE_Illegal_breakpoint: u64 = 3;
-pub const X64CAUSE_Enviroment_call_from_U_mode: u64 = 8;
+pub const PMPCFG = packed struct { R: u1, W: u1, X: u1, A: u2, _zero: u2, L: u1 };
 
-pub const X64MTVEC = packed struct {
-    mode: u2,
-    base: u62,
-};
+fn buildMCause(arch: Arch) type {
+    return packed struct {
+        code: @Type(std.builtin.Type{ .Int = .{ .signedness = .unsigned, .bits = arch.bytes() - 1 } }),
+        intrerupt: u1,
 
-pub const X64MStatus = packed struct {
-    WPRI0: u1,
-    SIE: u1,
-    WPRI1: u1,
-    MIE: u1,
-    WPRI2: u1,
-    SPIE: u1,
-    UBE: u1,
-    MPIE: u1,
-    SPP: u1,
-    VS: u2,
-    MPP: u2,
-    FS: u2,
-    XS: u2,
-    MPRV: u1,
-    SUM: u1,
-    MXR: u1,
-    TVM: u1,
-    TW: u1,
-    TSR: u1,
-    SPELP: u1,
-    SDT: u1,
-    WPRI3: u7,
-    UXL: u2,
-    SXL: u2,
-    SBE: u1,
-    MBE: u1,
-    GVA: u1,
-    MPV: u1,
-    WPRI4: u1,
-    MPELP: u1,
-    MDT: u1,
-    WPRI5: u20,
-    SD: u1,
-};
+        pub const InstructionAddrMisaligned = @This(){ .intrerupt = 0, .code = 0 };
+        pub const InstructionAccesFalut = @This(){ .intrerupt = 0, .code = 1 };
+        pub const IllegalInstruction = @This(){ .intrerupt = 0, .code = 2 };
+        pub const Breakpoint = @This(){ .intrerupt = 0, .code = 3 };
+        pub const ECallFromU = @This(){ .intrerupt = 0, .code = 8 };
+    };
+}
 
-pub const X64MIP = packed struct {
-    _zero0: u1,
-    SSIP: u1,
-    _zero1: u1,
-    MSIP: u1,
-    _zero2: u1,
-    STIP: u1,
-    _zero3: u1,
-    MTIP: u1,
-    _zero4: u1,
-    SEIP: u1,
-    _zero5: u1,
-    MEIP: u1,
-    _zero6: u1,
-    LCOFIP: u1,
-    _zero7: u2,
-    platform: u48,
-};
+pub fn buildCSRS(arch: Arch) type {
+    switch (arch) {
+        .X32 => {
+            return struct {
+                pub const MSTATUS = packed struct { WPRI0: u1, SIE: u1, WPRI1: u1, MIE: u1, WPRI2: u1, SPIE: u1, UBE: u1, MPIE: u1, SPP: u1, VS: u2, MPP: u2, FS: u2, XS: u2, MPRV: u1, SUM: u1, MXR: u1, TVM: u1, TW: u1, TSR: u1, SPELP: u1, SDT: u1, WPRI3: u6, SD: u1 };
+                pub const MSTATUSH = packed struct { WPRI0: u4, SBE: u1, MBE: u1, GVA: u1, MPV: u1, WPRI1: u1, MPELP: u1, MDT: u1, WPRI2: u21 };
+                pub const MTVEC = packed struct { mode: u2, base: u30 };
+                pub const MCAUSE = buildMCause(arch);
+                pub const MIP = packed struct { _zero0: u1, SSIP: u1, _zero1: u1, MSIP: u1, _zero2: u1, STIP: u1, _zero3: u1, MTIP: u1, _zero4: u1, SEIP: u1, _zero5: u1, MEIP: u1, _zero6: u1, LCOFIP: u1, _zero7: u2, platform: u16 };
+                pub const MIE = packed struct { _zero0: u1, SSIE: u1, _zero1: u1, MSIE: u1, _zero2: u1, STIE: u1, _zero3: u1, MTIE: u1, _zero4: u1, SEIE: u1, _zero5: u1, MEIE: u1, _zero6: u1, LCOFIE: u1, _zero7: u2, platform: u16 };
+                pub const PMPCFG_N = packed struct {
+                    pmpcfg0: PMPCFG,
+                    pmpcfg1: PMPCFG,
+                    pmpcfg2: PMPCFG,
+                    pmpcfg3: PMPCFG,
+                };
 
-pub const X64MIE = packed struct {
-    _zero0: u1,
-    SSIE: u1,
-    _zero1: u1,
-    MSIE: u1,
-    _zero2: u1,
-    STIE: u1,
-    _zero3: u1,
-    MTIE: u1,
-    _zero4: u1,
-    SEIE: u1,
-    _zero5: u1,
-    MEIE: u1,
-    _zero6: u1,
-    LCOFIE: u1,
-    _zero7: u2,
-    platform: u48,
-};
+                /// # Machine Information Registers
+                mvendorid: u32 = 0,
+                marchid: u32 = 0,
+                mimpid: u32 = 0,
+                mhartid: u32 = 0,
+                // mconfigptr
 
-pub const X64MNStatus = packed struct {
-    _reserved0: u3,
-    NMIE: u1,
-    _reserved1: u3,
-    MNPV: u1,
-    _reserved2: u1,
-    MNPELP: u1,
-    _reserved3: u1,
-    MNPP: u2,
-    _reserved4: u51,
-};
+                /// # Machine Trap Setup
+                mstatus: MSTATUS = std.mem.zeroes(MSTATUS),
+                misa: u32 = 0,
+                // medeleg
+                // mideleg
+                mie: MIE = std.mem.zeroes(MIE),
+                mtvec: MTVEC = std.mem.zeroes(MTVEC),
+                // mcounteren
+                mstatush: MSTATUSH = std.mem.zeroes(MSTATUSH),
 
-pub const PMPCFG = packed struct {
-    R: u1,
-    W: u1,
-    X: u1,
-    A: u2,
-    _zero: u2,
-    L: u1,
-};
+                /// # Machine Trap Handling
+                mscratch: u32 = 0,
+                mepc: u32 = 0,
+                mcause: MCAUSE = std.mem.zeroes(MCAUSE),
+                // mtval
+                mip: MIP = std.mem.zeroes(MIP),
+                // mtinst
+                // mtval2
 
-pub const X64PMPCFG = packed struct {
-    pmpcfg0: PMPCFG,
-    pmpcfg1: PMPCFG,
-    pmpcfg2: PMPCFG,
-    pmpcfg3: PMPCFG,
-    pmpcfg4: PMPCFG,
-    pmpcfg5: PMPCFG,
-    pmpcfg6: PMPCFG,
-    pmpcfg7: PMPCFG,
-};
+                /// # Machine Configuration
+                // menvcfg
+                // mseccfg
 
-pub const X32MSTATUS = packed struct {
-    WPRI0: u1,
-    SIE: u1,
-    WPRI1: u1,
-    MIE: u1,
-    WPRI2: u1,
-    SPIE: u1,
-    UBE: u1,
-    MPIE: u1,
-    SPP: u1,
-    VS: u2,
-    MPP: u2,
-    FS: u2,
-    XS: u2,
-    MPRV: u1,
-    SUM: u1,
-    MXR: u1,
-    TVM: u1,
-    TW: u1,
-    TSR: u1,
-    SPELP: u1,
-    SDT: u1,
-    WPRI3: u6,
-    SD: u1,
-};
+                /// # Machine Memory Protection
+                pmpcfg0: PMPCFG_N = std.mem.zeroes(PMPCFG_N),
+                // .. pmpcfg15
+                pmpaddr0: u32 = 0,
+                // .. pmpaddr63
 
-pub const X32MSTATUSH = packed struct {
-    WPRI0: u4,
-    SBE: u1,
-    MBE: u1,
-    GVA: u1,
-    MPV: u1,
-    WPRI1: u1,
-    MPELP: u1,
-    MDT: u1,
-    WPRI2: u21,
-};
+            };
+        },
+        .X64 => {
+            return struct {
+                pub const MTVEC = packed struct { mode: u2, base: u62 };
+                pub const MSTATUS = packed struct { WPRI0: u1, SIE: u1, WPRI1: u1, MIE: u1, WPRI2: u1, SPIE: u1, UBE: u1, MPIE: u1, SPP: u1, VS: u2, MPP: u2, FS: u2, XS: u2, MPRV: u1, SUM: u1, MXR: u1, TVM: u1, TW: u1, TSR: u1, SPELP: u1, SDT: u1, WPRI3: u7, UXL: u2, SXL: u2, SBE: u1, MBE: u1, GVA: u1, MPV: u1, WPRI4: u1, MPELP: u1, MDT: u1, WPRI5: u20, SD: u1 };
+                pub const MIP = packed struct { _zero0: u1, SSIP: u1, _zero1: u1, MSIP: u1, _zero2: u1, STIP: u1, _zero3: u1, MTIP: u1, _zero4: u1, SEIP: u1, _zero5: u1, MEIP: u1, _zero6: u1, LCOFIP: u1, _zero7: u2, platform: u48 };
+                pub const MIE = packed struct { _zero0: u1, SSIE: u1, _zero1: u1, MSIE: u1, _zero2: u1, STIE: u1, _zero3: u1, MTIE: u1, _zero4: u1, SEIE: u1, _zero5: u1, MEIE: u1, _zero6: u1, LCOFIE: u1, _zero7: u2, platform: u48 };
+                pub const MNSTATUS = packed struct { _reserved0: u3, NMIE: u1, _reserved1: u3, MNPV: u1, _reserved2: u1, MNPELP: u1, _reserved3: u1, MNPP: u2, _reserved4: u51 };
+                pub const PMPCFG_N = packed struct {
+                    pmpcfg0: PMPCFG,
+                    pmpcfg1: PMPCFG,
+                    pmpcfg2: PMPCFG,
+                    pmpcfg3: PMPCFG,
+                    pmpcfg4: PMPCFG,
+                    pmpcfg5: PMPCFG,
+                    pmpcfg6: PMPCFG,
+                    pmpcfg7: PMPCFG,
+                };
+                pub const SATP = packed struct { PPN: u44, ASID: u16, mode: u4 };
+                pub const MENVCFG = packed struct { FIOM: u1, WPRI0: u1, LPE: u1, SSE: u1, CBIE: u2, CBCFE: u1, CBZE: u1, WPRI1: u8, WPRI2: u16, PMM: u2, WPRI3: u14, WPRI4: u11, DTE: u1, CDE: u1, ADUE: u1, PBMTE: u1, STCE: u1 };
+                pub const MCAUSE = buildMCause(arch);
 
-pub const X32MTVEC = packed struct {
-    mode: u2,
-    base: u30,
-};
+                /// # Machine Information Registers
+                mvendorid: u64 = 0,
+                marchid: u64 = 0,
+                mimpid: u64 = 0,
+                mhartid: u64 = 0,
+                // mconfigptr: MCONFIGPTR = std.mem.zeroes(MCONFIGPTR),
+
+                /// # Machine Trap Setup
+                mstatus: MSTATUS = std.mem.zeroes(MSTATUS),
+                misa: u64 = 0,
+                // medeleg
+                // mideleg
+                mie: MIE = std.mem.zeroes(MIE),
+                mtvec: MTVEC = std.mem.zeroes(MTVEC),
+                // mcounteren
+
+                /// # Machine Trap Handling
+                mscratch: u64 = 0,
+                mepc: u64 = 0,
+                mcause: MCAUSE = std.mem.zeroes(MCAUSE),
+                // mtval
+                mip: MIP = std.mem.zeroes(MIP),
+                // mtinst
+                // mtval2
+
+                /// # Machine Configuration
+                menvcfg: MENVCFG = std.mem.zeroes(MENVCFG),
+                // mseccfg
+
+                /// # Machine Memory Protection
+                pmpcfg0: PMPCFG_N = std.mem.zeroes(PMPCFG_N),
+                // .. pmpcfg14 % 2
+                pmpaddr0: u64 = 0,
+                // .. pmpaddr63
+            };
+        },
+    }
+}
