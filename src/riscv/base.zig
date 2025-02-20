@@ -237,7 +237,7 @@ pub const CSRAddr = enum(u12) {
     sstatus = 0x100,
     sie = 0x104,
     stvec = 0x105,
-    scountern = 0x106,
+    scounteren = 0x106,
 
     senvcfg = 0x10A,
 
@@ -248,6 +248,8 @@ pub const CSRAddr = enum(u12) {
     scause = 0x142,
     stval = 0x143,
     sip = 0x144,
+    stimecmp = 0x14D,
+    stimecmph = 0x15D,
     scountovf = 0xDA0,
 
     satp = 0x180,
@@ -944,10 +946,17 @@ fn buildMCause(arch: Arch) type {
     };
 }
 
+pub const MCOUNTEREN = packed struct { CY: u1, TM: u1, IR: u1, HMP3: u1, HMP4: u1, HMP5: u1, HMP6: u1, HMP7: u1, HMP8: u1, HMP9: u1, HMP10: u1, HMP11: u1, HMP12: u1, HMP13: u1, HMP14: u1, HMP15: u1, HMP16: u1, HMP17: u1, HMP18: u1, HMP19: u1, HMP20: u1, HMP21: u1, HMP22: u1, HMP23: u1, HMP24: u1, HMP25: u1, HMP26: u1, HMP27: u1, HMP28: u1, HMP29: u1, HMP30: u1, HMP31: u1 };
+pub const MENVCFG = packed struct { FIOM: u1, WPRI0: u1, LPE: u1, SSE: u1, CBIE: u2, CBCFE: u1, CBZE: u1, WPRI1: u8, WPRI2: u16, PMM: u2, WPRI3: u14, WPRI4: u11, DTE: u1, CDE: u1, ADUE: u1, PBMTE: u1, STCE: u1 };
+
 pub fn buildCSRS(arch: Arch) type {
     switch (arch) {
         .X32 => {
             return struct {
+                pub const SSTATUS = packed struct { WPRI0: u1, SIE: u1, WPRI1: u3, SPIE: u1, UBE: u1, WPRI2: u1, SPP: u1, VS: u2, WPRI3: u2, FS: u2, XS: u2, WPRI4: u1, SUM: u1, MXR: u1, WPRI5: u3, SPELP: u1, SDT: u1, WPRI6: u6, SD: u1 };
+
+                pub const SATP = packed struct { PNN: u22, ASID: u9, mode: u1 };
+
                 pub const MSTATUS = packed struct { WPRI0: u1, SIE: u1, WPRI1: u1, MIE: u1, WPRI2: u1, SPIE: u1, UBE: u1, MPIE: u1, SPP: u1, VS: u2, MPP: u2, FS: u2, XS: u2, MPRV: u1, SUM: u1, MXR: u1, TVM: u1, TW: u1, TSR: u1, SPELP: u1, SDT: u1, WPRI3: u6, SD: u1 };
                 pub const MSTATUSH = packed struct { WPRI0: u4, SBE: u1, MBE: u1, GVA: u1, MPV: u1, WPRI1: u1, MPELP: u1, MDT: u1, WPRI2: u21 };
                 pub const MTVEC = packed struct { mode: u2, base: u30 };
@@ -961,46 +970,63 @@ pub fn buildCSRS(arch: Arch) type {
                     pmpcfg3: PMPCFG,
                 };
 
+                time: u64,
+
+                /// # Supervisor Trap Setup
+                sstatus: SSTATUS,
+                sie: u32,
+                stvec: MTVEC,
+                scounteren: MCOUNTEREN,
+
+                /// # Supervisor Protection and Translation
+                satp: SATP,
+
+                stimecmp: u64,
+
                 /// # Machine Information Registers
-                mvendorid: u32 = 0,
-                marchid: u32 = 0,
-                mimpid: u32 = 0,
-                mhartid: u32 = 0,
-                // mconfigptr
+                mvendorid: u32,
+                marchid: u32,
+                mimpid: u32,
+                mhartid: u32,
+                mconfigptr: u32,
 
                 /// # Machine Trap Setup
-                mstatus: MSTATUS = std.mem.zeroes(MSTATUS),
-                misa: u32 = 0,
-                // medeleg
-                // mideleg
-                mie: MIE = std.mem.zeroes(MIE),
-                mtvec: MTVEC = std.mem.zeroes(MTVEC),
-                // mcounteren
-                mstatush: MSTATUSH = std.mem.zeroes(MSTATUSH),
+                mstatus: MSTATUS,
+                misa: u32,
+                medeleg: u32,
+                mideleg: u32,
+                mie: MIE,
+                mtvec: MTVEC,
+                mcounteren: MCOUNTEREN,
+                mstatush: MSTATUSH,
 
                 /// # Machine Trap Handling
-                mscratch: u32 = 0,
-                mepc: u32 = 0,
-                mcause: MCAUSE = std.mem.zeroes(MCAUSE),
-                // mtval
-                mip: MIP = std.mem.zeroes(MIP),
-                // mtinst
-                // mtval2
+                mscratch: u32,
+                mepc: u32,
+                mcause: MCAUSE,
+                mtval: u32,
+                mip: MIP,
+                mtinst: u32,
+                mtval2: u32,
 
                 /// # Machine Configuration
-                // menvcfg
+                menvcfg: MENVCFG,
                 // mseccfg
 
                 /// # Machine Memory Protection
-                pmpcfg0: PMPCFG_N = std.mem.zeroes(PMPCFG_N),
+                pmpcfg0: PMPCFG_N,
                 // .. pmpcfg15
-                pmpaddr0: u32 = 0,
+                pmpaddr0: u32,
                 // .. pmpaddr63
 
             };
         },
         .X64 => {
             return struct {
+                pub const SSTATUS = packed struct { WPRI0: u1, SIE: u1, WPRI1: u3, SPIE: u1, UBE: u1, WPRI2: u1, SPP: u1, VS: u2, WPRI3: u2, FS: u2, XS: u2, WPRI4: u1, SUM: u1, MXR: u1, WPRI5: u3, SPELP: u1, SDT: u1, WPRI6: u7, UXL: u2, WPRI7: u29, SD: u1 };
+
+                pub const SATP = packed struct { PNN: u44, ASID: u16, mode: u4 };
+
                 pub const MTVEC = packed struct { mode: u2, base: u62 };
                 pub const MSTATUS = packed struct { WPRI0: u1, SIE: u1, WPRI1: u1, MIE: u1, WPRI2: u1, SPIE: u1, UBE: u1, MPIE: u1, SPP: u1, VS: u2, MPP: u2, FS: u2, XS: u2, MPRV: u1, SUM: u1, MXR: u1, TVM: u1, TW: u1, TSR: u1, SPELP: u1, SDT: u1, WPRI3: u7, UXL: u2, SXL: u2, SBE: u1, MBE: u1, GVA: u1, MPV: u1, WPRI4: u1, MPELP: u1, MDT: u1, WPRI5: u20, SD: u1 };
                 pub const MIP = packed struct { _zero0: u1, SSIP: u1, _zero1: u1, MSIP: u1, _zero2: u1, STIP: u1, _zero3: u1, MTIP: u1, _zero4: u1, SEIP: u1, _zero5: u1, MEIP: u1, _zero6: u1, LCOFIP: u1, _zero7: u2, platform: u48 };
@@ -1016,43 +1042,54 @@ pub fn buildCSRS(arch: Arch) type {
                     pmpcfg6: PMPCFG,
                     pmpcfg7: PMPCFG,
                 };
-                pub const SATP = packed struct { PPN: u44, ASID: u16, mode: u4 };
-                pub const MENVCFG = packed struct { FIOM: u1, WPRI0: u1, LPE: u1, SSE: u1, CBIE: u2, CBCFE: u1, CBZE: u1, WPRI1: u8, WPRI2: u16, PMM: u2, WPRI3: u14, WPRI4: u11, DTE: u1, CDE: u1, ADUE: u1, PBMTE: u1, STCE: u1 };
                 pub const MCAUSE = buildMCause(arch);
 
+                time: u64,
+
+                /// # Supervisor Trap Setup
+                sstatus: SSTATUS,
+                sie: u64,
+                stvec: MTVEC,
+                scounteren: MCOUNTEREN,
+
+                stimecmp: u64,
+
+                /// # Supervisor Protection and Translation
+                satp: SATP,
+
                 /// # Machine Information Registers
-                mvendorid: u64 = 0,
-                marchid: u64 = 0,
-                mimpid: u64 = 0,
-                mhartid: u64 = 0,
-                // mconfigptr: MCONFIGPTR = std.mem.zeroes(MCONFIGPTR),
+                mvendorid: u64,
+                marchid: u64,
+                mimpid: u64,
+                mhartid: u64,
+                mconfigptr: u64,
 
                 /// # Machine Trap Setup
-                mstatus: MSTATUS = std.mem.zeroes(MSTATUS),
-                misa: u64 = 0,
-                // medeleg
-                // mideleg
-                mie: MIE = std.mem.zeroes(MIE),
-                mtvec: MTVEC = std.mem.zeroes(MTVEC),
-                // mcounteren
+                mstatus: MSTATUS,
+                misa: u64,
+                medeleg: u64,
+                mideleg: u64,
+                mie: MIE,
+                mtvec: MTVEC,
+                mcounteren: MCOUNTEREN,
 
                 /// # Machine Trap Handling
-                mscratch: u64 = 0,
-                mepc: u64 = 0,
-                mcause: MCAUSE = std.mem.zeroes(MCAUSE),
-                // mtval
-                mip: MIP = std.mem.zeroes(MIP),
-                // mtinst
-                // mtval2
+                mscratch: u64,
+                mepc: u64,
+                mcause: MCAUSE,
+                mtval: u64,
+                mip: MIP,
+                mtinst: u64,
+                mtval2: u64,
 
                 /// # Machine Configuration
-                menvcfg: MENVCFG = std.mem.zeroes(MENVCFG),
+                menvcfg: MENVCFG,
                 // mseccfg
 
                 /// # Machine Memory Protection
-                pmpcfg0: PMPCFG_N = std.mem.zeroes(PMPCFG_N),
+                pmpcfg0: PMPCFG_N,
                 // .. pmpcfg14 % 2
-                pmpaddr0: u64 = 0,
+                pmpaddr0: u64,
                 // .. pmpaddr63
             };
         },

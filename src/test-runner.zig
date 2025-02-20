@@ -67,12 +67,31 @@ pub fn main() !void {
     }
 }
 
+const IOTOHOST = struct {
+    result: u64,
+
+    pub fn size(self: *@This()) u64 {
+        _ = self;
+        return 8;
+    }
+
+    pub fn read(self: *@This(), index: u64, buffer: []u8) void {
+        @memcpy(buffer, std.mem.asBytes(&self.result)[index .. index + buffer.len]);
+    }
+
+    pub fn write(self: *@This(), index: u64, buffer: []const u8) void {
+        @memcpy(std.mem.asBytes(&self.result)[index .. index + buffer.len], buffer);
+    }
+};
+
 pub fn build(comptime arch: riscv.Arch) type {
     const ASM = riscv_asm.build_asm(.X64);
     const CPU = riscv.buildCPU(arch, 1);
     const ELF = elf.build(CPU);
     return struct {
-        tohost_result: *u64,
+        allocator: Allocator,
+        io_tohost: *IOTOHOST,
+        object: ELF,
         memory: [8]u8,
         cpu: *CPU,
 
@@ -89,16 +108,29 @@ pub fn build(comptime arch: riscv.Arch) type {
             errdefer object.deinit();
 
             const tohost_addr = object.sections.get(".tohost").?;
-            const tohost_result: *u64 = @ptrFromInt(try cpu.map_to_memory(tohost_addr));
+
+            const io_tohost = try allocator.create(IOTOHOST);
+            errdefer allocator.destroy(io_tohost);
+            io_tohost.result = 0;
+
+            try cpu.add_mmio(IOTOHOST, tohost_addr, io_tohost);
+            std.mem.reverse(riscv.BusEntry, cpu.bus.items);
 
             return .{
-                .tohost_result = tohost_result,
+                .allocator = allocator,
+                .io_tohost = io_tohost,
+                .object = object,
                 .memory = std.mem.zeroes([8]u8),
                 .cpu = cpu,
             };
         }
 
         pub fn step(self: *@This()) !void {
+            errdefer self.allocator.destroy(self.cpu);
+            errdefer self.cpu.deinit();
+            errdefer self.object.deinit();
+            errdefer self.allocator.destroy(self.io_tohost);
+
             var old_values = std.mem.zeroes([4]arch.uarch());
             _ = try self.cpu.vmemory_read(self.cpu.harts[0].pc, &self.memory);
             const instr = try ASM.from_memory(&self.memory);
@@ -126,10 +158,10 @@ pub fn build(comptime arch: riscv.Arch) type {
                 print("\tReg: {s} = 0x{x} = 0x{x}\n", .{ riscv.IntRegNames[reg.to_u5()], old_values[i], self.cpu.harts[0].g_regs[reg.to_u5()] });
             }
 
-            if (self.tohost_result.* & 1 != 1) {
+            if (self.io_tohost.result & 1 != 1) {
                 return;
             }
-            const result = (self.tohost_result.* >> 1) & 0xffffffff;
+            const result = (self.io_tohost.result >> 1) & 0xffffffff;
             print("{}\n", .{result});
             if (result != 0) {
                 std.process.exit(1);

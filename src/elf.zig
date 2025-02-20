@@ -1,10 +1,11 @@
 const std = @import("std");
 const path = std.fs.path;
+const IOMemory = @import("io/memory.zig");
 
 pub fn build(comptime CPU: type) type {
     return struct {
         cpu: *CPU,
-        maps: std.ArrayListUnmanaged([]u8),
+        memory_ios: std.ArrayListUnmanaged(*IOMemory),
         sections: std.StringHashMapUnmanaged(u64),
 
         pub fn load(cpu: *CPU, filename: []const u8) !@This() {
@@ -36,20 +37,24 @@ pub fn build(comptime CPU: type) type {
                 try sections.put(cpu.allocator, name, section_header.sh_addr);
             }
 
-            var maps = std.ArrayListUnmanaged([]u8){};
-            errdefer maps.deinit(cpu.allocator);
+            var memory_ios = std.ArrayListUnmanaged(*IOMemory){};
+            errdefer memory_ios.deinit(cpu.allocator);
             var program_header_iterator = header.program_header_iterator(file);
             std.debug.print("Sections:\n", .{});
             while (try program_header_iterator.next()) |prog| {
                 if (prog.p_type == std.elf.PT_LOAD) {
                     const buffer = try cpu.allocator.alloc(u8, prog.p_memsz);
                     errdefer cpu.allocator.free(buffer);
-                    try maps.append(cpu.allocator, buffer);
-                    @memset(buffer, 0);
-                    try file.seekTo(prog.p_offset);
-                    _ = try file.readAll(buffer);
+
+                    _ = try file.preadAll(buffer, prog.p_offset);
+                    const io_memory = try cpu.allocator.create(IOMemory);
+                    errdefer cpu.allocator.destroy(io_memory);
+
+                    io_memory.* = IOMemory.init(buffer);
+                    try memory_ios.append(cpu.allocator, io_memory);
+
                     std.debug.print("\t0x{x}: 0x{x}..0x{x}\n", .{ prog.p_align, prog.p_vaddr, prog.p_vaddr + prog.p_memsz });
-                    try cpu.add_memory_map(.{ .start = @intFromPtr(buffer.ptr), .end = @intFromPtr(buffer.ptr) + buffer.len - 1, .to_start = prog.p_vaddr, .to_end = prog.p_vaddr + prog.p_memsz - 1 });
+                    try cpu.add_mmio(IOMemory, prog.p_vaddr, io_memory);
                 }
             }
 
@@ -59,16 +64,17 @@ pub fn build(comptime CPU: type) type {
 
             return .{
                 .cpu = cpu,
-                .maps = maps,
+                .memory_ios = memory_ios,
                 .sections = sections,
             };
         }
 
         pub fn deinit(self: *@This()) void {
-            for (self.maps.items) |map| {
-                self.cpu.allocator.free(map);
+            for (self.memory_ios.items) |memory_io| {
+                self.cpu.allocator.free(memory_io.slice);
+                self.cpu.allocator.destroy(memory_io);
             }
-            self.maps.deinit(self.cpu.allocator);
+            self.memory_ios.deinit(self.cpu.allocator);
             var key_iterator = self.sections.keyIterator();
             while (key_iterator.next()) |key| {
                 self.cpu.allocator.free(key.*);
