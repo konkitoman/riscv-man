@@ -1308,10 +1308,10 @@ pub const RV64C = union(enum) {
 
     pub fn used_grs(self: Self) [3]IR {
         return switch (self) {
-            .C_LDSP => |i| .{ i.rd, IR.ZERO, IR.ZERO },
-            .C_FLDSP => |i| .{ i.rd, IR.ZERO, IR.ZERO },
-            .C_SDSP => |i| .{ i.rd, IR.ZERO, IR.ZERO },
-            .C_FSDSP => |i| .{ i.rd, IR.ZERO, IR.ZERO },
+            .C_LDSP => |i| .{ i.rd, IR.SP, IR.ZERO },
+            .C_FLDSP => |i| .{ i.rd, IR.SP, IR.ZERO },
+            .C_SDSP => |i| .{ i.rd, IR.SP, IR.ZERO },
+            .C_FSDSP => |i| .{ i.rd, IR.SP, IR.ZERO },
             .C_LD => |i| .{ i.rd.to_reg(), i.rs1.to_reg(), IR.ZERO },
             .C_FLD => |i| .{ i.rd.to_reg(), i.rs1.to_reg(), IR.ZERO },
             .C_SD => |i| .{ i.rs1.to_reg(), i.rs2.to_reg(), IR.ZERO },

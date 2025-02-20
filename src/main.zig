@@ -10,20 +10,64 @@ const elf = @import("elf.zig").build(CPU);
 const IOMemory = @import("io/memory.zig");
 
 const IOUART = struct {
-    buffer: [8]u8 = std.mem.zeroes([8]u8),
+    output: std.ArrayList(u8),
+    ier: IER = std.mem.zeroes(IER),
+    fcr: FCR = std.mem.zeroes(FCR),
+    lcr: LCR = std.mem.zeroes(LCR),
 
     pub fn size(self: *@This()) u64 {
-        return self.buffer.len;
+        _ = self;
+        return 8;
     }
 
     pub fn read(self: *@This(), index: u64, buffer: []u8) void {
-        @memcpy(buffer, self.buffer[index .. index + buffer.len]);
-        buffer[5] ^= buffer[5] & 1;
+        std.debug.assert(buffer.len == 1);
+
+        _ = self;
+
+        switch (index) {
+            0 => {
+                print("Request read\n", .{});
+                buffer[0] = 0;
+            },
+            5 => {
+                print("Request LSR\n", .{});
+                buffer[0] |= 1;
+            },
+            else => {
+                print("Request UNKNOWN Read {}\n", .{index});
+                @panic("");
+            },
+        }
     }
 
     pub fn write(self: *@This(), index: u64, buffer: []const u8) void {
-        @memcpy(self.buffer[index .. index + buffer.len], buffer);
-        std.debug.print("C: `{c}`\n", .{self.buffer[0]});
+        std.debug.assert(buffer.len == 1);
+
+        switch (index) {
+            0 => {
+                print("C: {X}\n", .{buffer[0]});
+                self.output.append(buffer[0]) catch {
+                    @panic("OUT OF MEMMORY");
+                };
+            },
+            1 => {
+                self.ier = @bitCast(buffer[0]);
+                print("IER: {}\n", .{self.ier});
+            },
+            2 => {
+                self.fcr = @bitCast(buffer[0]);
+                print("FCR: {}\n", .{self.fcr});
+            },
+            3 => {
+                self.lcr = @bitCast(buffer[0]);
+                print("LCR: {}\n", .{self.lcr});
+            },
+            else => {
+                print("Request UNKNOWN Write {}\n", .{index});
+                @panic("");
+            },
+        }
     }
 };
 
@@ -37,7 +81,8 @@ pub fn main() !void {
 
     // UART
 
-    var io_uart = IOUART{};
+    var io_uart = IOUART{ .output = std.ArrayList(u8).init(gpa.allocator()) };
+    defer io_uart.output.deinit();
     try cpu.add_mmio(IOUART, 0x10000000, &io_uart);
 
     // KERNEL
@@ -49,9 +94,6 @@ pub fn main() !void {
     for (cpu.bus.items) |entry| {
         std.debug.print("\t0x{x}-0x{x}\n", .{ entry.start, entry.end });
     }
-
-    var uart = std.ArrayList(u8).init(gpa.allocator());
-    defer uart.deinit();
 
     var memory: [8]u8 = undefined;
     var test_memory: [8]u8 = undefined;
@@ -81,6 +123,7 @@ pub fn main() !void {
             if (reg.to_u5() == 0) continue;
             print("\tReg: {s} = 0x{x} = 0x{x}\n", .{ riscv.IntRegNames[reg.to_u5()], old_values[i], cpu.harts[0].g_regs[reg.to_u5()] });
         }
+        print("UART: `{s}`\n", .{io_uart.output.items});
     } else |err| {
         return err;
     }
@@ -89,38 +132,66 @@ pub fn main() !void {
 const RHR = u8;
 const THR = u8;
 const IER = packed struct {
-    RHRI: u1,
-    THRI: u1,
-    RLSI: u1,
-    MSI: u1,
+    receive_holding_RI: u1,
+    transmit_holding_RI: u1,
+    receive_line_SI: u1,
+    modem_SI: u1,
     _zero0: u4,
 };
-
 const FCR = packed struct {
-    FIFO: u1,
-    RFIFOR: u1,
-    TFIFOR: u1,
-    DMAMODES: u1,
-    _zero1: u2,
-    RCVR_T_LSB: u1,
-    RCVR_T_MSB: u1,
+    FIFO_enabled: u1,
+    reciver_FIFO_reset: u1,
+    transmit_FIFO_reset: u1,
+    DMA_mode_select: u1,
+    _zero0: u2,
+    RCVR_trigger_LSB: u1,
+    RCVR_trigger_MSB: u1,
 };
-
-const ISR = packed struct { IS: u1, IPB0: u1, IPB1: u1, IPB2: u1, _zero: u2, FIFO1: u1, FIFO2: u1 };
-const LCR = packed struct { word_length: u2, STOP: u1, parity_enable: u1, even_parity: u1, set_parity: u1, set_break: u1, divisor_latch_enable: u1 };
-
+const ISR = packed struct {
+    IS: u1,
+    IP: u3,
+    _zero: u2,
+    FIFO1: u1,
+    FIFO2: u1,
+};
+const LCR = packed struct {
+    word_length: u2,
+    STOP: u1,
+    parity_enable: u1,
+    even_parity: u1,
+    set_parity: u1,
+    set_break: u1,
+    divisor_latch_enable: u1,
+};
+const MCR = packed struct {
+    DTR: u1,
+    RTS: u1,
+    OP1: u1,
+    OP2: u1,
+    loop_back: u1,
+    _zero: u3,
+};
 const LSR = packed struct {
-    RDRL: u1,
-    OE: u1,
-    PE: u1,
-    FE: u1,
-    BI: u1,
-    THE: u1,
-    TE: u1,
-    FIFOE: u1,
+    receive_data_ready: u1,
+    overrun_error: u1,
+    parity_error: u1,
+    framing_error: u1,
+    break_I: u1,
+    transmit_holding_empty: u1,
+    transmit_empty: u1,
+    FIFO_error: u1,
 };
-
-const UART = packed struct { rhr: RHR, ier: IER, isr: ISR, lsr: LSR };
+const MSR = packed struct {
+    delta_CTS: u1,
+    delta_DSR: u1,
+    delta_R1: u1,
+    delta_CD: u1,
+    CTS: u1,
+    DSR: u1,
+    RI: u1,
+    CD: u1,
+};
+const SPR = u8;
 
 pub fn dump_hex(pad: []const u8, bytes: []const u8) void {
     std.debug.lockStdErr();

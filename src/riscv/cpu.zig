@@ -1149,10 +1149,9 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                 switch (arch) {
                     .X32 => {
                         return error.NotImplemented;
-                        // try cpu.vmemory_read_all(self.g_regs[2] +% (offset * 4), &buffer);
                     },
                     .X64 => {
-                        try cpu.vmemory_read(self.g_regs[2] +% (offset * 8), &buffer);
+                        try cpu.vmemory_read(self.g_regs[2] +% offset, &buffer);
                     },
                 }
                 self.g_regs[instr.ci.rd] = std.mem.readInt(uarch, &buffer, .little);
@@ -1166,10 +1165,9 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                 switch (arch) {
                     .X32 => {
                         return error.NotImplemented;
-                        // try cpu.vmemory_write_all(self.g_regs[2] +% (offset * 4), &buffer);
                     },
                     .X64 => {
-                        try cpu.vmemory_write(self.g_regs[2] +% (offset * 8), &buffer);
+                        try cpu.vmemory_write(self.g_regs[2] +% offset, &buffer);
                     },
                 }
                 self.pc += 2;
@@ -1211,9 +1209,20 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                 }
 
                 if (instr.ci.rd == 2) {
-                    self.g_regs[2] +%= @as(uarch, @bitCast(@as(iarch, @as(i10, @bitCast(rearrange(u5, u10, instr.ci.imm_2_6, &base.@"imm_4|6|8:7|5") | @as(u10, instr.ci.imm_12) << 9)))));
+                    const imm = @as(uarch, @bitCast(@as(iarch, @as(i10, @bitCast(rearrange(u5, u10, instr.ci.imm_2_6, &base.@"imm_4|6|8:7|5") | @as(u10, instr.ci.imm_12) << 9)))));
+
+                    if (imm == 0) {
+                        @panic("imm 0 in c.lui");
+                    }
+
+                    self.g_regs[instr.ci.rd] +%= imm;
                 } else {
                     const imm = @as(iarch, @as(i6, @bitCast((@as(u6, instr.ci.imm_12) << 5) | @as(u6, instr.ci.imm_2_6))));
+
+                    if (imm == 0) {
+                        @panic("imm 0 in c.lui");
+                    }
+
                     self.g_regs[instr.ci.rd] = @as(uarch, @bitCast(imm)) << 12;
                 }
                 self.pc += 2;
@@ -1312,7 +1321,7 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
 
             fn c_lw(self: *@This(), instr: InstrFX16, cpu: *CPU) !void {
                 var buffer: [4]u8 = undefined;
-                const imm = rearrange(u3, u7, instr.cs.imm2, &base.@"imm_5:3") | rearrange(u2, u7, instr.cs.imm1, &base.@"imm_2|6");
+                const imm = rearrange(u3, u8, instr.cs.imm2, &base.@"imm_5:3") | rearrange(u2, u8, instr.cs.imm1, &base.@"imm_2|6");
                 const offset = @as(uarch, imm);
                 try cpu.vmemory_read(self.g_regs[instr.cl.rs1()] +% offset, &buffer);
                 self.g_regs[instr.cl.rd()] = std.mem.readInt(u32, &buffer, .little);
@@ -1322,7 +1331,7 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
             fn c_sw(self: *@This(), instr: InstrFX16, cpu: *CPU) !void {
                 var buffer: [4]u8 = undefined;
                 std.mem.writeInt(u32, &buffer, @truncate(self.g_regs[instr.cs.rs2()]), .little);
-                const imm = rearrange(u3, u7, instr.cs.imm2, &base.@"imm_5:3") | rearrange(u2, u7, instr.cs.imm1, &base.@"imm_2|6");
+                const imm = rearrange(u3, u8, instr.cs.imm2, &base.@"imm_5:3") | rearrange(u2, u8, instr.cs.imm1, &base.@"imm_2|6");
                 const offset = @as(uarch, imm);
                 try cpu.vmemory_write(self.g_regs[instr.cs.rs1()] +% offset, &buffer);
                 self.pc += 2;
@@ -1332,7 +1341,7 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
                 if (arch == .X64) {
                     var buffer: [8]u8 = undefined;
                     std.mem.writeInt(u64, &buffer, @truncate(self.g_regs[instr.cs.rs2()]), .little);
-                    const imm = rearrange(u3, u7, instr.cs.imm2, &base.@"imm_5:3") | rearrange(u2, u7, instr.cs.imm1, &base.@"imm_7:6");
+                    const imm = rearrange(u3, u8, instr.cs.imm2, &base.@"imm_5:3") | rearrange(u2, u8, instr.cs.imm1, &base.@"imm_7:6");
                     const offset = @as(uarch, imm);
                     try cpu.vmemory_write(self.g_regs[instr.cs.rs1()] +% offset, &buffer);
                     self.pc += 2;
