@@ -933,17 +933,32 @@ pub const InstrFormatX16 = packed union {
 
 pub const PMPCFG = packed struct { R: u1, W: u1, X: u1, A: u2, _zero: u2, L: u1 };
 
-fn buildMCause(arch: Arch) type {
+fn buildCause(arch: Arch) type {
     return packed struct {
         code: @Type(std.builtin.Type{ .Int = .{ .signedness = .unsigned, .bits = arch.bytes() - 1 } }),
-        intrerupt: u1,
+        interrupt: u1,
 
-        pub const InstructionAddrMisaligned = @This(){ .intrerupt = 0, .code = 0 };
-        pub const InstructionAccesFalut = @This(){ .intrerupt = 0, .code = 1 };
-        pub const IllegalInstruction = @This(){ .intrerupt = 0, .code = 2 };
-        pub const Breakpoint = @This(){ .intrerupt = 0, .code = 3 };
-        pub const ECallFromU = @This(){ .intrerupt = 0, .code = 8 };
+        pub const InstructionAddrMisaligned = @This(){ .interrupt = 0, .code = 0 };
+        pub const InstructionAccesFalut = @This(){ .interrupt = 0, .code = 1 };
+        pub const IllegalInstruction = @This(){ .interrupt = 0, .code = 2 };
+        pub const Breakpoint = @This(){ .interrupt = 0, .code = 3 };
+        pub const LoadAddressMisaligned = @This(){ .interrupt = 0, .code = 4 };
+        pub const LoadAccessFault = @This(){ .interrupt = 0, .code = 5 };
+        pub const Store_AMOAddressMisaligned = @This(){ .interrupt = 0, .code = 6 };
+        pub const Store_AMOAccessFault = @This(){ .interrupt = 0, .code = 7 };
+        pub const ECallFromU = @This(){ .interrupt = 0, .code = 8 };
+        pub const ECallFromS = @This(){ .interrupt = 0, .code = 9 };
+
+        pub const ECallFromM = @This(){ .interrupt = 0, .code = 11 };
+        pub const InstructionPageFault = @This(){ .interrupt = 0, .code = 12 };
+        pub const LoadPageFault = @This(){ .interrupt = 0, .code = 13 };
+
+        pub const Store_AMOPageFault = @This(){ .interrupt = 0, .code = 15 };
     };
+}
+
+fn buildMNStatus(arch: Arch) type {
+    return packed struct { _reserved0: u3, NMIE: u1, _reserved1: u3, MNPV: u1, _reserved2: u1, MNPELP: u1, _reserved3: u1, MNPP: u2, _reserved4: @Type(std.builtin.Type{ .Int = .{ .signedness = .unsigned, .bits = arch.bytes() - 13 } }) };
 }
 
 pub const MCOUNTEREN = packed struct { CY: u1, TM: u1, IR: u1, HMP3: u1, HMP4: u1, HMP5: u1, HMP6: u1, HMP7: u1, HMP8: u1, HMP9: u1, HMP10: u1, HMP11: u1, HMP12: u1, HMP13: u1, HMP14: u1, HMP15: u1, HMP16: u1, HMP17: u1, HMP18: u1, HMP19: u1, HMP20: u1, HMP21: u1, HMP22: u1, HMP23: u1, HMP24: u1, HMP25: u1, HMP26: u1, HMP27: u1, HMP28: u1, HMP29: u1, HMP30: u1, HMP31: u1 };
@@ -955,12 +970,12 @@ pub fn buildCSRS(arch: Arch) type {
             return struct {
                 pub const SSTATUS = packed struct { WPRI0: u1, SIE: u1, WPRI1: u3, SPIE: u1, UBE: u1, WPRI2: u1, SPP: u1, VS: u2, WPRI3: u2, FS: u2, XS: u2, WPRI4: u1, SUM: u1, MXR: u1, WPRI5: u3, SPELP: u1, SDT: u1, WPRI6: u6, SD: u1 };
 
-                pub const SATP = packed struct { PNN: u22, ASID: u9, mode: u1 };
+                pub const SATP = packed struct { PPN: u22, ASID: u9, MODE: u1 };
 
                 pub const MSTATUS = packed struct { WPRI0: u1, SIE: u1, WPRI1: u1, MIE: u1, WPRI2: u1, SPIE: u1, UBE: u1, MPIE: u1, SPP: u1, VS: u2, MPP: u2, FS: u2, XS: u2, MPRV: u1, SUM: u1, MXR: u1, TVM: u1, TW: u1, TSR: u1, SPELP: u1, SDT: u1, WPRI3: u6, SD: u1 };
                 pub const MSTATUSH = packed struct { WPRI0: u4, SBE: u1, MBE: u1, GVA: u1, MPV: u1, WPRI1: u1, MPELP: u1, MDT: u1, WPRI2: u21 };
-                pub const MTVEC = packed struct { mode: u2, base: u30 };
-                pub const MCAUSE = buildMCause(arch);
+                pub const TVEC = packed struct { mode: u2, base: u30 };
+                pub const CAUSE = buildCause(arch);
                 pub const MIP = packed struct { _zero0: u1, SSIP: u1, _zero1: u1, MSIP: u1, _zero2: u1, STIP: u1, _zero3: u1, MTIP: u1, _zero4: u1, SEIP: u1, _zero5: u1, MEIP: u1, _zero6: u1, LCOFIP: u1, _zero7: u2, platform: u16 };
                 pub const MIE = packed struct { _zero0: u1, SSIE: u1, _zero1: u1, MSIE: u1, _zero2: u1, STIE: u1, _zero3: u1, MTIE: u1, _zero4: u1, SEIE: u1, _zero5: u1, MEIE: u1, _zero6: u1, LCOFIE: u1, _zero7: u2, platform: u16 };
                 pub const PMPCFG_N = packed struct {
@@ -970,13 +985,23 @@ pub fn buildCSRS(arch: Arch) type {
                     pmpcfg3: PMPCFG,
                 };
 
+                pub const MNSTATUS = buildMNStatus(arch);
+
                 time: u64,
 
                 /// # Supervisor Trap Setup
                 sstatus: SSTATUS,
                 sie: u32,
-                stvec: MTVEC,
+                stvec: TVEC,
                 scounteren: MCOUNTEREN,
+
+                /// # Supervisor Trap Handling
+                sscratch: u32,
+                sepc: u32,
+                scause: CAUSE,
+                stval: u32,
+                sip: MIP,
+                // scountovf
 
                 /// # Supervisor Protection and Translation
                 satp: SATP,
@@ -996,14 +1021,14 @@ pub fn buildCSRS(arch: Arch) type {
                 medeleg: u32,
                 mideleg: u32,
                 mie: MIE,
-                mtvec: MTVEC,
+                mtvec: TVEC,
                 mcounteren: MCOUNTEREN,
                 mstatush: MSTATUSH,
 
                 /// # Machine Trap Handling
                 mscratch: u32,
                 mepc: u32,
-                mcause: MCAUSE,
+                mcause: CAUSE,
                 mtval: u32,
                 mip: MIP,
                 mtinst: u32,
@@ -1019,19 +1044,23 @@ pub fn buildCSRS(arch: Arch) type {
                 pmpaddr0: u32,
                 // .. pmpaddr63
 
+                /// # Machine Non-Maskable Interrupt Handling
+                mnscratch: u32,
+                mnepc: u32,
+                mncause: CAUSE,
+                mnstatus: MNSTATUS,
             };
         },
         .X64 => {
             return struct {
                 pub const SSTATUS = packed struct { WPRI0: u1, SIE: u1, WPRI1: u3, SPIE: u1, UBE: u1, WPRI2: u1, SPP: u1, VS: u2, WPRI3: u2, FS: u2, XS: u2, WPRI4: u1, SUM: u1, MXR: u1, WPRI5: u3, SPELP: u1, SDT: u1, WPRI6: u7, UXL: u2, WPRI7: u29, SD: u1 };
 
-                pub const SATP = packed struct { PNN: u44, ASID: u16, mode: u4 };
+                pub const SATP = packed struct { PPN: u44, ASID: u16, MODE: u4 };
 
                 pub const MTVEC = packed struct { mode: u2, base: u62 };
                 pub const MSTATUS = packed struct { WPRI0: u1, SIE: u1, WPRI1: u1, MIE: u1, WPRI2: u1, SPIE: u1, UBE: u1, MPIE: u1, SPP: u1, VS: u2, MPP: u2, FS: u2, XS: u2, MPRV: u1, SUM: u1, MXR: u1, TVM: u1, TW: u1, TSR: u1, SPELP: u1, SDT: u1, WPRI3: u7, UXL: u2, SXL: u2, SBE: u1, MBE: u1, GVA: u1, MPV: u1, WPRI4: u1, MPELP: u1, MDT: u1, WPRI5: u20, SD: u1 };
                 pub const MIP = packed struct { _zero0: u1, SSIP: u1, _zero1: u1, MSIP: u1, _zero2: u1, STIP: u1, _zero3: u1, MTIP: u1, _zero4: u1, SEIP: u1, _zero5: u1, MEIP: u1, _zero6: u1, LCOFIP: u1, _zero7: u2, platform: u48 };
                 pub const MIE = packed struct { _zero0: u1, SSIE: u1, _zero1: u1, MSIE: u1, _zero2: u1, STIE: u1, _zero3: u1, MTIE: u1, _zero4: u1, SEIE: u1, _zero5: u1, MEIE: u1, _zero6: u1, LCOFIE: u1, _zero7: u2, platform: u48 };
-                pub const MNSTATUS = packed struct { _reserved0: u3, NMIE: u1, _reserved1: u3, MNPV: u1, _reserved2: u1, MNPELP: u1, _reserved3: u1, MNPP: u2, _reserved4: u51 };
                 pub const PMPCFG_N = packed struct {
                     pmpcfg0: PMPCFG,
                     pmpcfg1: PMPCFG,
@@ -1042,7 +1071,9 @@ pub fn buildCSRS(arch: Arch) type {
                     pmpcfg6: PMPCFG,
                     pmpcfg7: PMPCFG,
                 };
-                pub const MCAUSE = buildMCause(arch);
+                pub const CAUSE = buildCause(arch);
+
+                pub const MNSTATUS = buildMNStatus(arch);
 
                 time: u64,
 
@@ -1056,6 +1087,14 @@ pub fn buildCSRS(arch: Arch) type {
 
                 /// # Supervisor Protection and Translation
                 satp: SATP,
+
+                /// # Supervisor Trap Handling
+                sscratch: u64,
+                sepc: u64,
+                scause: CAUSE,
+                stval: u64,
+                sip: MIP,
+                // scountovf
 
                 /// # Machine Information Registers
                 mvendorid: u64,
@@ -1076,7 +1115,7 @@ pub fn buildCSRS(arch: Arch) type {
                 /// # Machine Trap Handling
                 mscratch: u64,
                 mepc: u64,
-                mcause: MCAUSE,
+                mcause: CAUSE,
                 mtval: u64,
                 mip: MIP,
                 mtinst: u64,
@@ -1091,6 +1130,12 @@ pub fn buildCSRS(arch: Arch) type {
                 // .. pmpcfg14 % 2
                 pmpaddr0: u64,
                 // .. pmpaddr63
+
+                /// # Machine Non-Maskable Interrupt Handling
+                mnscratch: u64,
+                mnepc: u64,
+                mncause: CAUSE,
+                mnstatus: MNSTATUS,
             };
         },
     }

@@ -79,6 +79,14 @@ pub fn main() !void {
     var cpu = try CPU.init(gpa.allocator());
     defer cpu.deinit();
 
+    // MEMORY
+    const memory = try gpa.allocator().alloc(u8, 1024 * 1000 * 1000); // 1GB
+    defer gpa.allocator().free(memory);
+
+    var io_memory = IOMemory.init(memory);
+
+    try cpu.add_mmio(IOMemory, 0x80000000, &io_memory);
+
     // UART
 
     var io_uart = IOUART{ .output = std.ArrayList(u8).init(gpa.allocator()) };
@@ -95,24 +103,24 @@ pub fn main() !void {
         std.debug.print("\t0x{x}-0x{x}\n", .{ entry.start, entry.end });
     }
 
-    var memory: [8]u8 = undefined;
+    var instr_memory: [8]u8 = undefined;
     var test_memory: [8]u8 = undefined;
     const ASM = @import("riscv/asm.zig").build_asm(.X64);
     var instr: ASM = undefined;
     var old_values = std.mem.zeroes([4]u64);
     while (d: {
-        _ = try cpu.vmemory_read(cpu.harts[0].pc, &memory);
-        instr = try ASM.from_memory(&memory);
+        _ = try cpu.vmemory_read(cpu.harts[0].pc, &instr_memory);
+        instr = try ASM.from_memory(&instr_memory);
         print("{s} 0x{x} ", .{ cpu.harts[0].mode.name(), cpu.harts[0].pc });
         try instr.write(std.io.getStdErr().writer().any());
         for (0..instr.used_grs().len) |i| {
             old_values[i] = cpu.harts[0].g_regs[instr.used_grs()[i].to_u5()];
         }
         const len = try instr.to_memory(&test_memory);
-        if (!std.mem.eql(u8, memory[0..instr.len()], test_memory[0..len])) {
-            std.mem.reverse(u8, memory[0..instr.len()]);
+        if (!std.mem.eql(u8, instr_memory[0..instr.len()], test_memory[0..len])) {
+            std.mem.reverse(u8, instr_memory[0..instr.len()]);
             std.mem.reverse(u8, test_memory[0..len]);
-            print("Before: {b:0>8}\n", .{memory[0..instr.len()]});
+            print("Before: {b:0>8}\n", .{instr_memory[0..instr.len()]});
             print("After: {b:0>8}\n", .{test_memory[0..len]});
             return error.LossyDissasambler;
         }

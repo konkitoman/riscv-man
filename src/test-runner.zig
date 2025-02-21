@@ -3,6 +3,7 @@ const riscv = @import("riscv/cpu.zig");
 const riscv_asm = @import("riscv/asm.zig");
 const elf = @import("elf.zig");
 const Allocator = std.mem.Allocator;
+const IOMemory = @import("io/memory.zig");
 
 const print = std.debug.print;
 
@@ -93,6 +94,7 @@ pub fn build(comptime arch: riscv.Arch) type {
         io_tohost: *IOTOHOST,
         object: ELF,
         memory: [8]u8,
+        io_memory: *IOMemory,
         cpu: *CPU,
 
         pub fn init(allocator: Allocator, program_path: []const u8) !@This() {
@@ -100,6 +102,16 @@ pub fn build(comptime arch: riscv.Arch) type {
             errdefer allocator.destroy(cpu);
             cpu.* = try CPU.init(allocator);
             errdefer cpu.deinit();
+
+            const memory = try allocator.alloc(u8, 1024 * 1000 * 2); // 2MB
+            errdefer allocator.free(memory);
+
+            const io_memory = try allocator.create(IOMemory);
+            errdefer allocator.destroy(io_memory);
+
+            io_memory.* = IOMemory.init(memory);
+
+            try cpu.add_mmio(IOMemory, 0x80000000, io_memory);
 
             var object = ELF.load(cpu, program_path) catch |err| {
                 print("Fail to load program: {s} Error: {}\n", .{ program_path, err });
@@ -118,6 +130,7 @@ pub fn build(comptime arch: riscv.Arch) type {
 
             return .{
                 .allocator = allocator,
+                .io_memory = io_memory,
                 .io_tohost = io_tohost,
                 .object = object,
                 .memory = std.mem.zeroes([8]u8),
@@ -130,9 +143,11 @@ pub fn build(comptime arch: riscv.Arch) type {
             errdefer self.cpu.deinit();
             errdefer self.object.deinit();
             errdefer self.allocator.destroy(self.io_tohost);
+            errdefer self.allocator.free(self.io_memory.slice);
+            errdefer self.allocator.destroy(self.io_memory);
 
             var old_values = std.mem.zeroes([4]arch.uarch());
-            _ = try self.cpu.vmemory_read(self.cpu.harts[0].pc, &self.memory);
+            try self.cpu.harts[0].mmio_read(self.cpu, self.cpu.harts[0].pc, &self.memory);
             const instr = try ASM.from_memory(&self.memory);
             print("{s}: 0x{x} ", .{ self.cpu.harts[0].mode.name(), self.cpu.harts[0].pc });
             try instr.write(std.io.getStdErr().writer().any());
