@@ -1606,6 +1606,7 @@ pub fn LD(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: t
         }
 
         fn execute(eei_data: *DataEEI, hart_data: *DataHart, instr_data: []const u8) void {
+            if (ARCH == .X32) @panic("X64 instruction");
             debug.assert(instr_data.len == 4);
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
             const i = x32_instr.i;
@@ -1646,6 +1647,7 @@ pub fn SD(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: t
         }
 
         fn execute(eei_data: *DataEEI, hart_data: *DataHart, instr_data: []const u8) void {
+            if (ARCH == .X32) @panic("X64 instruction");
             debug.assert(instr_data.len == 4);
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
             const s = x32_instr.s;
@@ -1686,6 +1688,7 @@ pub fn ADDIW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
         fn execute(eei_data: *DataEEI, hart_data: *DataHart, instr_data: []const u8) void {
             _ = eei_data;
 
+            if (ARCH == .X32) @panic("X64 instruction");
             debug.assert(instr_data.len == 4);
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
             const i = x32_instr.i;
@@ -1711,6 +1714,7 @@ pub fn SLLIW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
 
     return struct {
         fn check(instr_data: []const u8) bool {
+            if (ARCH == .X32) return false;
             if (instr_data.len != 4) return false;
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
@@ -1728,6 +1732,7 @@ pub fn SLLIW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
         fn execute(eei_data: *DataEEI, hart_data: *DataHart, instr_data: []const u8) void {
             _ = eei_data;
 
+            if (ARCH == .X32) @panic("X64 instruction");
             debug.assert(instr_data.len == 4);
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
             const i_1 = x32_instr.i_1;
@@ -1753,6 +1758,7 @@ pub fn SRLIW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
 
     return struct {
         fn check(instr_data: []const u8) bool {
+            if (ARCH == .X32) return false;
             if (instr_data.len != 4) return false;
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
@@ -1770,6 +1776,7 @@ pub fn SRLIW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
         fn execute(eei_data: *DataEEI, hart_data: *DataHart, instr_data: []const u8) void {
             _ = eei_data;
 
+            if (ARCH == .X32) @panic("X64 instruction");
             debug.assert(instr_data.len == 4);
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
             const i_1 = x32_instr.i_1;
@@ -1796,6 +1803,7 @@ pub fn SRAIW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
 
     return struct {
         fn check(instr_data: []const u8) bool {
+            if (ARCH == .X32) return false;
             if (instr_data.len != 4) return false;
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
@@ -1813,6 +1821,7 @@ pub fn SRAIW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
         fn execute(eei_data: *DataEEI, hart_data: *DataHart, instr_data: []const u8) void {
             _ = eei_data;
 
+            if (ARCH == .X32) @panic("X64 instruction");
             debug.assert(instr_data.len == 4);
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
             const i_1 = x32_instr.i_1;
@@ -1847,6 +1856,7 @@ pub fn ADDW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
     return struct {
         fn check(instr_data: []const u8) bool {
+            if (ARCH == .X32) return false;
             if (instr_data.len != 4) return false;
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
@@ -1861,6 +1871,7 @@ pub fn ADDW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
         fn execute(eei_data: *DataEEI, hart_data: *DataHart, instr_data: []const u8) void {
             _ = eei_data;
 
+            if (ARCH == .X32) @panic("X64 instruction");
             debug.assert(instr_data.len == 4);
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
             const r = x32_instr.r;
@@ -1886,8 +1897,10 @@ pub fn SUBW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
     return struct {
         fn check(instr_data: []const u8) bool {
+            if (ARCH == .X32) return false;
             if (instr_data.len != 4) return false;
 
+            if (ARCH == .X32) @panic("X64 instruction");
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
             if (x32_instr.opcode != 0b0111011) return false; // OP-32 opcode
@@ -1925,6 +1938,7 @@ pub fn SLLW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
     return struct {
         fn check(instr_data: []const u8) bool {
+            if (ARCH == .X32) return false;
             if (instr_data.len != 4) return false;
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
@@ -1939,6 +1953,7 @@ pub fn SLLW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
         fn execute(eei_data: *DataEEI, hart_data: *DataHart, instr_data: []const u8) void {
             _ = eei_data;
 
+            if (ARCH == .X32) @panic("X64 instruction");
             debug.assert(instr_data.len == 4);
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
             const r = x32_instr.r;
@@ -1964,6 +1979,7 @@ pub fn SRLW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
     return struct {
         fn check(instr_data: []const u8) bool {
+            if (ARCH == .X32) return false;
             if (instr_data.len != 4) return false;
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
@@ -1978,6 +1994,7 @@ pub fn SRLW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
         fn execute(eei_data: *DataEEI, hart_data: *DataHart, instr_data: []const u8) void {
             _ = eei_data;
 
+            if (ARCH == .X32) @panic("X64 instruction");
             debug.assert(instr_data.len == 4);
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
             const r = x32_instr.r;
@@ -2004,6 +2021,7 @@ pub fn SRAW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
     return struct {
         fn check(instr_data: []const u8) bool {
+            if (ARCH == .X32) return false;
             if (instr_data.len != 4) return false;
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
@@ -2018,6 +2036,7 @@ pub fn SRAW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
         fn execute(eei_data: *DataEEI, hart_data: *DataHart, instr_data: []const u8) void {
             _ = eei_data;
 
+            if (ARCH == .X32) @panic("X64 instruction");
             debug.assert(instr_data.len == 4);
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
             const r = x32_instr.r;

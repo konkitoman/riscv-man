@@ -66,9 +66,6 @@ pub const DataEEI = struct {
 };
 
 pub fn buildEEI(comptime ARCH: base.Arch, comptime harts: usize, DataHart: type, comptime instructions: []const base.Instruction(ARCH, DataEEI, DataHart)) type {
-    const ASM = @import("asm.zig");
-    const Instr = ASM.build_asm(.X64);
-
     return struct {
         pub const Hart = struct {
             data: DataHart,
@@ -77,15 +74,6 @@ pub fn buildEEI(comptime ARCH: base.Arch, comptime harts: usize, DataHart: type,
                 var instr_data: [4]u8 = undefined;
 
                 if (!self.data.read(eei_data, self.data.I.pc, &instr_data)) return;
-                const instr = Instr.from_memory(&instr_data) catch |err| {
-                    std.debug.panic("{}", .{err});
-                };
-
-                std.debug.print("{s} {x}: ", .{ self.data.Zicsr.mode.name(), self.data.I.pc });
-
-                instr.write(std.io.getStdErr().writer().any()) catch {
-                    @panic("");
-                };
 
                 var run_with: ?usize = null;
 

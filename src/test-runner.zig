@@ -1,9 +1,17 @@
 const std = @import("std");
-const riscv = @import("riscv/cpu.zig");
+const base = @import("riscv/base.zig");
+const default_EEI = @import("riscv/default_EEI.zig");
 const riscv_asm = @import("riscv/asm.zig");
 const elf = @import("elf.zig");
 const Allocator = std.mem.Allocator;
 const IOMemory = @import("io/memory.zig");
+
+const I = @import("riscv/extension/I.zig");
+const Zicsr = @import("riscv/extension/Zicsr.zig");
+
+const Arch = base.Arch;
+
+const DataEEI = default_EEI.DataEEI;
 
 const print = std.debug.print;
 
@@ -85,22 +93,138 @@ const IOTOHOST = struct {
     }
 };
 
-pub fn build(comptime arch: riscv.Arch) type {
-    const ASM = riscv_asm.build_asm(.X64);
-    const CPU = riscv.buildCPU(arch, 1);
-    const ELF = elf.build(CPU);
+pub fn build(comptime ARCH: Arch) type {
+    const ASM = riscv_asm.build_asm(ARCH);
     return struct {
+        const DataHart = struct {
+            const uarch = ARCH.uarch();
+
+            I: I.buildDataHart(ARCH),
+            Zicsr: Zicsr.buildDataHart(ARCH),
+
+            const CAUSE = Zicsr.buildDataHart(ARCH).CAUSE;
+
+            pub fn read(self: *@This(), eei_data: *DataEEI, index: u64, buffer: []u8) bool {
+                _ = self;
+
+                eei_data.mmio_read(index, buffer);
+
+                return true;
+            }
+
+            pub fn write(self: *@This(), eei_data: *DataEEI, index: u64, buffer: []const u8) bool {
+                _ = self;
+
+                eei_data.mmio_write(index, buffer);
+
+                return true;
+            }
+
+            pub fn fence(self: *@This(), eei_data: *DataEEI) void {
+                _ = eei_data;
+
+                std.debug.print("FENCE not implemented\n", .{});
+                self.I.pc += 4;
+            }
+
+            pub fn ecall(self: *@This(), eei_data: *DataEEI) void {
+                _ = eei_data;
+
+                self.m_trap(CAUSE.ECallFromU);
+            }
+
+            pub fn ebreak(self: *@This(), eei_data: *DataEEI) void {
+                _ = eei_data;
+
+                std.debug.print("EBREAK not implemented\n", .{});
+                self.I.pc += 4;
+            }
+
+            pub fn illegal_instruction(self: *@This()) void {
+                std.debug.print("Illegal Instruction\n", .{});
+                self.m_trap(CAUSE.IllegalInstruction);
+            }
+
+            fn trap(self: *@This(), cause: CAUSE) bool {
+                if (cause.interrupt == 1) @panic("Interrupt not implemented");
+
+                switch (self.mode) {
+                    .U, .S => {
+                        if (self.Zicsr.medeleg >> @truncate(cause.code) & 1 == 1) {
+                            self.s_trap(cause);
+                            return true;
+                        } else {
+                            self.m_trap(cause);
+                            return true;
+                        }
+                    },
+                    .M => {
+                        self.m_trap(cause);
+                        return true;
+                    },
+                    .H => {
+                        @panic("Not implemented");
+                    },
+                }
+            }
+
+            fn m_trap(self: *@This(), cause: CAUSE) void {
+                self.Zicsr.mstatus.MPP = self.Zicsr.mode.to_u2();
+                self.Zicsr.mode = .M;
+                self.Zicsr.mepc = self.I.pc;
+                self.Zicsr.mcause = cause;
+                const tvec = self.Zicsr.mtvec;
+                switch (tvec.mode) {
+                    0 => { // DIRECT
+                        self.I.pc = @as(uarch, tvec.base) << 2;
+                    },
+                    1 => { // VECTORED
+                        // TODO: Implement VECTORED
+                        @panic("VECTORED not implemented!");
+                        // self.pc = (mtvec ^ (mtvec & 0b11)) + (4 * (cause & 0xffffffff));
+                    },
+                    else => {
+                        @panic("Unknown MTVEC Mode!");
+                    },
+                }
+            }
+
+            fn s_trap(self: *@This(), cause: CAUSE) void {
+                self.Zicsr.sstatus.SPP = @truncate(self.Zicsr.mode.to_u2());
+                self.Zicsr.mode = .S;
+                self.Zicsr.sepc = self.I.pc;
+                self.Zicsr.scause = cause;
+                const tvec = self.Zicsr.stvec;
+                switch (tvec.mode) {
+                    0 => { // DIRECT
+                        self.I.pc = @as(uarch, tvec.base) << 2;
+                    },
+                    1 => { // VECTORED
+                        // TODO: Implement VECTORED
+                        @panic("VECTORED not implemented!");
+                        // self.pc = (mtvec ^ (mtvec & 0b11)) + (4 * (cause & 0xffffffff));
+                    },
+                    else => {
+                        @panic("Unknown MTVEC Mode!");
+                    },
+                }
+            }
+        };
+
+        const INSTRS = I.buildInstrs(ARCH, DataEEI, DataHart) ++ Zicsr.buildInstrs(ARCH, DataEEI, DataHart);
+        const EEI = default_EEI.buildEEI(ARCH, 1, DataHart, &INSTRS);
+        const ELF = elf.build(EEI);
+
         allocator: Allocator,
         io_tohost: *IOTOHOST,
-        object: ELF,
         memory: [8]u8,
         io_memory: *IOMemory,
-        cpu: *CPU,
+        cpu: *EEI,
 
         pub fn init(allocator: Allocator, program_path: []const u8) !@This() {
-            const cpu = try allocator.create(CPU);
+            const cpu = try allocator.create(EEI);
             errdefer allocator.destroy(cpu);
-            cpu.* = try CPU.init(allocator);
+            cpu.* = EEI.init(allocator, std.mem.zeroes(DataHart));
             errdefer cpu.deinit();
 
             const memory = try allocator.alloc(u8, 1024 * 1000 * 2); // 2MB
@@ -111,28 +235,74 @@ pub fn build(comptime arch: riscv.Arch) type {
 
             io_memory.* = IOMemory.init(memory);
 
-            try cpu.add_mmio(IOMemory, 0x80000000, io_memory);
+            try cpu.data.mmio_add(IOMemory, 0x80000000, io_memory);
 
-            var object = ELF.load(cpu, program_path) catch |err| {
-                print("Fail to load program: {s} Error: {}\n", .{ program_path, err });
-                return err;
-            };
-            errdefer object.deinit();
+            // Loading ELF
+            var file = try std.fs.cwd().openFile(program_path, .{});
+            defer file.close();
 
-            const tohost_addr = object.sections.get(".tohost").?;
+            const header = try std.elf.Header.read(file);
+
+            var program_header_iterator = header.program_header_iterator(file);
+            while (try program_header_iterator.next()) |ph| {
+                const buffer = try allocator.alloc(u8, ph.p_filesz);
+                defer allocator.free(buffer);
+
+                _ = try file.preadAll(buffer, ph.p_offset);
+                cpu.data.mmio_write(ph.p_vaddr, buffer);
+            }
+
+            cpu.harts[0].data.I.pc = @truncate(header.entry);
+
+            var string_table: ?[]u8 = null;
+
+            var section_header_iterator = header.section_header_iterator(file);
+            var i: usize = 0;
+            while (try section_header_iterator.next()) |sh| {
+                if (i != header.shstrndx) {
+                    i += 1;
+                    continue;
+                }
+                const buffer = try allocator.alloc(u8, sh.sh_size);
+                errdefer allocator.free(buffer);
+
+                _ = try file.preadAll(buffer, sh.sh_offset);
+
+                string_table = buffer;
+                break;
+            }
+
+            if (string_table == null) {
+                @panic("Cannot find string table");
+            }
+
+            var tohost_addr: ?u64 = null;
+
+            section_header_iterator = header.section_header_iterator(file);
+            while (try section_header_iterator.next()) |sh| {
+                const span = std.mem.span(@as([*:0]u8, @ptrCast(&string_table.?[sh.sh_name])));
+                if (std.mem.eql(u8, span, ".tohost")) {
+                    tohost_addr = sh.sh_addr;
+                }
+            }
+
+            if (tohost_addr == null) {
+                @panic("Cannot find .tohost");
+            }
 
             const io_tohost = try allocator.create(IOTOHOST);
             errdefer allocator.destroy(io_tohost);
             io_tohost.result = 0;
 
-            try cpu.add_mmio(IOTOHOST, tohost_addr, io_tohost);
-            std.mem.reverse(riscv.BusEntry, cpu.bus.items);
+            try cpu.data.mmio_add(IOTOHOST, tohost_addr.?, io_tohost);
+            std.mem.reverse(base.BusEntry, cpu.data.bus.items);
+
+            cpu.harts[0].data.Zicsr.mode = .M;
 
             return .{
                 .allocator = allocator,
                 .io_memory = io_memory,
                 .io_tohost = io_tohost,
-                .object = object,
                 .memory = std.mem.zeroes([8]u8),
                 .cpu = cpu,
             };
@@ -141,18 +311,17 @@ pub fn build(comptime arch: riscv.Arch) type {
         pub fn step(self: *@This()) !void {
             errdefer self.allocator.destroy(self.cpu);
             errdefer self.cpu.deinit();
-            errdefer self.object.deinit();
             errdefer self.allocator.destroy(self.io_tohost);
             errdefer self.allocator.free(self.io_memory.slice);
             errdefer self.allocator.destroy(self.io_memory);
 
-            var old_values = std.mem.zeroes([4]arch.uarch());
-            try self.cpu.harts[0].mmio_read(self.cpu, self.cpu.harts[0].pc, &self.memory);
+            var old_values = std.mem.zeroes([4]ARCH.uarch());
+            std.debug.assert(self.cpu.harts[0].data.read(&self.cpu.data, self.cpu.harts[0].data.I.pc, &self.memory));
             const instr = try ASM.from_memory(&self.memory);
-            print("{s}: 0x{x} ", .{ self.cpu.harts[0].mode.name(), self.cpu.harts[0].pc });
+            print("{s}: 0x{x} ", .{ self.cpu.harts[0].data.Zicsr.mode.name(), self.cpu.harts[0].data.I.pc });
             try instr.write(std.io.getStdErr().writer().any());
             for (0..instr.used_grs().len) |i| {
-                old_values[i] = self.cpu.harts[0].g_regs[instr.used_grs()[i].to_u5()];
+                old_values[i] = self.cpu.harts[0].data.I.regs[instr.used_grs()[i].to_u5()];
             }
             var old_memory: [8]u8 = undefined;
             @memcpy(&old_memory, &self.memory);
@@ -165,12 +334,12 @@ pub fn build(comptime arch: riscv.Arch) type {
                 return error.LossyDissasambler;
             }
 
-            try self.cpu.harts[0].step(self.cpu);
+            self.cpu.harts[0].step(&self.cpu.data);
 
             for (0..instr.used_grs().len) |i| {
                 const reg = instr.used_grs()[i];
                 if (reg.to_u5() == 0) continue;
-                print("\tReg: {s} = 0x{x} = 0x{x}\n", .{ riscv.IntRegNames[reg.to_u5()], old_values[i], self.cpu.harts[0].g_regs[reg.to_u5()] });
+                print("\tReg: {s} = 0x{x} = 0x{x}\n", .{ base.IntRegNames[reg.to_u5()], old_values[i], self.cpu.harts[0].data.I.regs[reg.to_u5()] });
             }
 
             if (self.io_tohost.result & 1 != 1) {
