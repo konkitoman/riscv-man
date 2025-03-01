@@ -931,6 +931,32 @@ pub const InstrFormatX16 = packed union {
     }
 };
 
+pub fn Instruction(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: type) type {
+    _ = ARCH;
+
+    return struct {
+        check: *const fn (instr_data: []const u8) bool,
+        execute: *const fn (eei_data: *DataEEI, hart_data: *DataHart, instr_data: []const u8) void,
+    };
+}
+
+pub const BusEntry = struct {
+    // inclusive range
+    start: u64,
+    end: u64,
+    io: *anyopaque,
+    fn_read: *const fn (io: *anyopaque, index: u64, buffer: []u8) void,
+    fn_write: *const fn (io: *anyopaque, index: u64, buffer: []const u8) void,
+
+    pub fn read(self: @This(), index: u64, buffer: []u8) void {
+        self.fn_read(self.io, index, buffer);
+    }
+
+    pub fn write(self: @This(), index: u64, buffer: []const u8) void {
+        self.fn_write(self.io, index, buffer);
+    }
+};
+
 pub const PMPCFG = packed struct { R: u1, W: u1, X: u1, A: u2, _zero: u2, L: u1 };
 
 fn buildCause(arch: Arch) type {
