@@ -20,6 +20,8 @@ pub fn buildDataHart(comptime ARCH: base.Arch) type {
 }
 
 pub fn LUI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: type) type {
+    const iarch = ARCH.iarch();
+
     return struct {
         fn check(instr_data: []const u8) bool {
             if (instr_data.len != 4) return false;
@@ -38,7 +40,9 @@ pub fn LUI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
             const u = x32_instr.u;
 
-            hart_data.I.regs[u.rd] = @bitCast(@as(ARCH.iarch(), @as(i32, @bitCast((@as(u32, u.imm_31_12) << 12)))));
+            if (u.rd != 0) {
+                hart_data.I.regs[u.rd] = @bitCast(@as(iarch, @as(i32, @bitCast(@as(u32, u.imm_31_12) << 12))));
+            }
 
             hart_data.I.pc += 4;
         }
@@ -308,7 +312,7 @@ pub fn BGE(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
             debug.assert(instr_data.len == 4);
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
             const b = x32_instr.b;
-            if (@as(iarch, @bitCast(hart_data.I.regs[b.rs1])) > @as(iarch, @bitCast(hart_data.I.regs[b.rs2]))) {
+            if (@as(iarch, @bitCast(hart_data.I.regs[b.rs1])) >= @as(iarch, @bitCast(hart_data.I.regs[b.rs2]))) {
                 hart_data.I.pc = @as(uarch, @bitCast(@as(iarch, @bitCast(hart_data.I.pc)) + b.get_imm()));
                 return;
             }
@@ -385,7 +389,7 @@ pub fn BGEU(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
             debug.assert(instr_data.len == 4);
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
             const b = x32_instr.b;
-            if (hart_data.I.regs[b.rs1] > hart_data.I.regs[b.rs2]) {
+            if (hart_data.I.regs[b.rs1] >= hart_data.I.regs[b.rs2]) {
                 hart_data.I.pc = @as(uarch, @bitCast(@as(iarch, @bitCast(hart_data.I.pc)) + b.get_imm()));
                 return;
             }
@@ -1058,7 +1062,7 @@ pub fn SRAI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
                 if (sign) {
                     const MAX: uarch = std.math.maxInt(uarch);
-                    hart_data.I.regs[i_1.rd] |= MAX - (MAX >> @truncate(i_1.shamt));
+                    hart_data.I.regs[i_1.rd] |= MAX ^ (MAX >> @truncate(i_1.shamt));
                 }
             }
 
@@ -1362,11 +1366,12 @@ pub fn SRA(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
                 const sign_bit: uarch = comptime 1 << (ARCH.bytes() - 1);
                 const sign: bool = hart_data.I.regs[r.rs1] & sign_bit == sign_bit;
 
-                hart_data.I.regs[r.rd] = hart_data.I.regs[r.rs1] >> @truncate(hart_data.I.regs[r.rs2]);
+                const shift: uarch = hart_data.I.regs[r.rs2];
+                hart_data.I.regs[r.rd] = hart_data.I.regs[r.rs1] >> @truncate(shift);
 
                 if (sign) {
                     const MAX: uarch = std.math.maxInt(uarch);
-                    hart_data.I.regs[r.rd] |= MAX - (MAX >> @truncate(hart_data.I.regs[r.rs2]));
+                    hart_data.I.regs[r.rd] |= MAX ^ (MAX >> @truncate(shift));
                 }
             }
 
@@ -1782,7 +1787,7 @@ pub fn SRLIW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
             const i_1 = x32_instr.i_1;
 
             if (i_1.rd != 0) {
-                hart_data.I.regs[i_1.rd] = @bitCast(@as(iarch, @as(i32, @truncate(@as(iarch, @bitCast(hart_data.I.regs[i_1.rs1])))) >> @truncate(i_1.shamt)));
+                hart_data.I.regs[i_1.rd] = @bitCast(@as(iarch, @as(i32, @bitCast(@as(u32, @bitCast(@as(i32, @truncate(@as(iarch, @bitCast(hart_data.I.regs[i_1.rs1])))))) >> @truncate(i_1.shamt)))));
             }
 
             hart_data.I.pc += 4;
@@ -1829,7 +1834,7 @@ pub fn SRAIW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
             if (i_1.rd != 0) {
                 const sign_bit: uarch = comptime 1 << 31;
                 const sign: bool = hart_data.I.regs[i_1.rs1] & sign_bit == sign_bit;
-                hart_data.I.regs[i_1.rd] = @bitCast(@as(iarch, @bitCast(hart_data.I.regs[i_1.rs1])) >> @truncate(i_1.shamt));
+                hart_data.I.regs[i_1.rd] = @bitCast(@as(iarch, @as(i32, @bitCast(@as(u32, @bitCast(@as(i32, @truncate(@as(iarch, @bitCast(hart_data.I.regs[i_1.rs1])))))) >> @truncate(i_1.shamt)))));
 
                 if (sign) {
                     const MAX: uarch = std.math.maxInt(u32);
@@ -1957,9 +1962,10 @@ pub fn SLLW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
             debug.assert(instr_data.len == 4);
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
             const r = x32_instr.r;
+            const value: u32 = @bitCast(@as(i32, @truncate(@as(iarch, @bitCast(hart_data.I.regs[r.rs1])))));
 
             if (r.rd != 0) {
-                hart_data.I.regs[r.rd] = @bitCast(@as(iarch, @as(i32, @truncate(@as(iarch, @bitCast(hart_data.I.regs[r.rs1])))) << @truncate(hart_data.I.regs[r.rs2])));
+                hart_data.I.regs[r.rd] = @bitCast(@as(iarch, @as(i32, @bitCast(value << @truncate(hart_data.I.regs[r.rs2])))));
             }
 
             hart_data.I.pc += 4;
@@ -1998,9 +2004,10 @@ pub fn SRLW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
             debug.assert(instr_data.len == 4);
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
             const r = x32_instr.r;
+            const value: u32 = @bitCast(@as(i32, @truncate(@as(iarch, @bitCast(hart_data.I.regs[r.rs1])))));
 
             if (r.rd != 0) {
-                hart_data.I.regs[r.rd] = @bitCast(@as(iarch, @as(i32, @truncate(@as(iarch, @bitCast(hart_data.I.regs[r.rs1])))) >> @truncate(hart_data.I.regs[r.rs2])));
+                hart_data.I.regs[r.rd] = @bitCast(@as(iarch, @as(i32, @bitCast(value >> @truncate(hart_data.I.regs[r.rs2])))));
             }
 
             hart_data.I.pc += 4;
@@ -2042,14 +2049,16 @@ pub fn SRAW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
             const r = x32_instr.r;
 
             if (r.rd != 0) {
-                const sign_bit: uarch = comptime 1 << (ARCH.bytes() - 1);
-                const sign: bool = hart_data.I.regs[r.rs1] & sign_bit == sign_bit;
+                const sign_bit: uarch = comptime 1 << 31;
+                const value: u32 = @bitCast(@as(i32, @truncate(@as(iarch, @bitCast(hart_data.I.regs[r.rs1])))));
+                const sign: bool = value & sign_bit == sign_bit;
+                const shift: u5 = @truncate(hart_data.I.regs[r.rs2]);
 
-                hart_data.I.regs[r.rd] = @bitCast(@as(iarch, @bitCast(hart_data.I.regs[r.rs1])) >> @truncate(hart_data.I.regs[r.rs2]));
+                hart_data.I.regs[r.rd] = value >> shift;
 
                 if (sign) {
                     const MAX: uarch = std.math.maxInt(u32);
-                    hart_data.I.regs[r.rd] |= MAX - (MAX >> @truncate(hart_data.I.regs[r.rs2]));
+                    hart_data.I.regs[r.rd] |= MAX - (MAX >> shift);
                 }
 
                 hart_data.I.regs[r.rd] = @bitCast(@as(iarch, @as(i32, @bitCast(@as(u32, @truncate(hart_data.I.regs[r.rd]))))));

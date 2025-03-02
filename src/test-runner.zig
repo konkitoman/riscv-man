@@ -7,6 +7,7 @@ const Allocator = std.mem.Allocator;
 const IOMemory = @import("io/memory.zig");
 
 const I = @import("riscv/extension/I.zig");
+const Zifencei = @import("riscv/extension/Zifencei.zig");
 const Zicsr = @import("riscv/extension/Zicsr.zig");
 
 const Arch = base.Arch;
@@ -211,7 +212,7 @@ pub fn build(comptime ARCH: Arch) type {
             }
         };
 
-        const INSTRS = I.buildInstrs(ARCH, DataEEI, DataHart) ++ Zicsr.buildInstrs(ARCH, DataEEI, DataHart);
+        const INSTRS = I.buildInstrs(ARCH, DataEEI, DataHart) ++ Zifencei.buildInstrs(ARCH, DataEEI, DataHart) ++ Zicsr.buildInstrs(ARCH, DataEEI, DataHart);
         const EEI = default_EEI.buildEEI(ARCH, 1, DataHart, &INSTRS);
         const ELF = elf.build(EEI);
 
