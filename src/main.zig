@@ -109,7 +109,7 @@ pub fn main() !void {
     var instr: ASM = undefined;
     var old_values = std.mem.zeroes([4]u64);
     while (d: {
-        _ = try cpu.vmemory_read(cpu.harts[0].pc, &instr_memory);
+        try cpu.mmio_read(cpu.harts[0].pc, &instr_memory);
         instr = try ASM.from_memory(&instr_memory);
         print("{s} 0x{x} ", .{ cpu.harts[0].mode.name(), cpu.harts[0].pc });
         try instr.write(std.io.getStdErr().writer().any());

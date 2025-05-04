@@ -9,7 +9,7 @@ const c = @cImport({
 
 pub fn check_root() !void {
     const cwd = std.fs.cwd();
-    var path_buff = std.mem.zeroes([std.fs.MAX_PATH_BYTES]u8);
+    var path_buff = std.mem.zeroes([std.fs.max_path_bytes]u8);
     const p = try cwd.realpath(".", &path_buff);
     var path_iter = std.mem.splitBackwardsScalar(u8, p, std.fs.path.sep);
     if (path_iter.next()) |segment| {

@@ -553,9 +553,9 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
             fn get_pmpcfg_from_paddri(self: @This(), pmpaddr_i: u6) u8 {
                 const div =
                     switch (arch) {
-                    .X32 => 4,
-                    .X64 => 8,
-                };
+                        .X32 => 4,
+                        .X64 => 8,
+                    };
                 const csr_offset_i = pmpaddr_i / div;
                 const seg = pmpaddr_i % div;
 
@@ -1556,9 +1556,9 @@ pub fn buildCPU(comptime arch: Arch, comptime harts_len: usize) type {
 
         pub fn add_mmio(self: *CPU, comptime TYPE: type, start: u64, io: *TYPE) !void {
             comptime {
-                const size_fn = @typeInfo(@TypeOf(TYPE.size)).Fn;
-                const read_fn = @typeInfo(@TypeOf(TYPE.read)).Fn;
-                const write_fn = @typeInfo(@TypeOf(TYPE.write)).Fn;
+                const size_fn = @typeInfo(@TypeOf(TYPE.size)).@"fn";
+                const read_fn = @typeInfo(@TypeOf(TYPE.read)).@"fn";
+                const write_fn = @typeInfo(@TypeOf(TYPE.write)).@"fn";
                 if (size_fn.params[0].type.? != *TYPE or size_fn.return_type.? != u64) {
                     @compileLog(size_fn);
                     @compileError("Invalid size function for io");

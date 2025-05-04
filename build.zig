@@ -43,6 +43,13 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const exe_new = b.addExecutable(.{
+        .name = "rvman-new",
+        .root_source_file = b.path("src/new.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).
@@ -50,12 +57,15 @@ pub fn build(b: *std.Build) void {
     b.getInstallStep().dependOn(&install_exe.step);
     const install_exe_test_runner = b.addInstallArtifact(exe_test_runner, .{});
     b.getInstallStep().dependOn(&install_exe_test_runner.step);
+    const install_exe_new = b.addInstallArtifact(exe_new, .{});
+    b.getInstallStep().dependOn(&install_exe_new.step);
 
     // This *creates* a Run step in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish
     // such a dependency.
     const run_cmd = b.addRunArtifact(exe);
     const run_cmd_test_runner = b.addRunArtifact(exe_test_runner);
+    const run_cmd_new = b.addRunArtifact(exe_new);
 
     // By making the run step depend on the install step, it will be run from the
     // installation directory rather than directly from within the cache directory.
@@ -63,12 +73,14 @@ pub fn build(b: *std.Build) void {
     // files, this ensures they will be present and in the expected location.
     run_cmd.step.dependOn(&install_exe.step);
     run_cmd_test_runner.step.dependOn(&install_exe_test_runner.step);
+    run_cmd_new.step.dependOn(&install_exe_new.step);
 
     // This allows the user to pass arguments to the application in the build
     // command itself, like this: `zig build run -- arg1 arg2 etc`
     if (b.args) |args| {
         run_cmd.addArgs(args);
         run_cmd_test_runner.addArgs(args);
+        run_cmd_new.addArgs(args);
     }
 
     // This creates a build step. It will be visible in the `zig build --help` menu,
@@ -79,4 +91,7 @@ pub fn build(b: *std.Build) void {
 
     const test_runner = b.step("test-runner", "Run a test program");
     test_runner.dependOn(&run_cmd_test_runner.step);
+
+    const run_new = b.step("new", "Run a new cpu");
+    run_new.dependOn(&run_cmd_new.step);
 }

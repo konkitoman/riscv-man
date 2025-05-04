@@ -9,9 +9,9 @@ pub const DataEEI = struct {
 
     pub fn mmio_add(self: *@This(), comptime TYPE: type, start: u64, io: *TYPE) !void {
         comptime {
-            const size_fn = @typeInfo(@TypeOf(TYPE.size)).Fn;
-            const read_fn = @typeInfo(@TypeOf(TYPE.read)).Fn;
-            const write_fn = @typeInfo(@TypeOf(TYPE.write)).Fn;
+            const size_fn = @typeInfo(@TypeOf(TYPE.size)).@"fn";
+            const read_fn = @typeInfo(@TypeOf(TYPE.read)).@"fn";
+            const write_fn = @typeInfo(@TypeOf(TYPE.write)).@"fn";
             if (size_fn.params[0].type.? != *TYPE or size_fn.return_type.? != u64) {
                 @compileLog(size_fn);
                 @compileError("Invalid size function for io");

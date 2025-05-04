@@ -209,7 +209,7 @@ pub const X64PMPCFG_N = packed struct {
 
 fn buildCause(ARCH: Arch) type {
     return packed struct {
-        code: @Type(std.builtin.Type{ .Int = .{ .signedness = .unsigned, .bits = ARCH.bytes() - 1 } }),
+        code: @Type(std.builtin.Type{ .int = .{ .signedness = .unsigned, .bits = ARCH.bytes() - 1 } }),
         interrupt: u1,
 
         pub const InstructionAddrMisaligned = @This(){ .interrupt = 0, .code = 0 };
@@ -232,7 +232,7 @@ fn buildCause(ARCH: Arch) type {
 }
 
 fn buildMNStatus(ARCH: Arch) type {
-    return packed struct { _reserved0: u3, NMIE: u1, _reserved1: u3, MNPV: u1, _reserved2: u1, MNPELP: u1, _reserved3: u1, MNPP: u2, _reserved4: @Type(std.builtin.Type{ .Int = .{ .signedness = .unsigned, .bits = ARCH.bytes() - 13 } }) };
+    return packed struct { _reserved0: u3, NMIE: u1, _reserved1: u3, MNPV: u1, _reserved2: u1, MNPELP: u1, _reserved3: u1, MNPP: u2, _reserved4: @Type(std.builtin.Type{ .int = .{ .signedness = .unsigned, .bits = ARCH.bytes() - 13 } }) };
 }
 
 pub const MCOUNTEREN = packed struct { CY: u1, TM: u1, IR: u1, HMP3: u1, HMP4: u1, HMP5: u1, HMP6: u1, HMP7: u1, HMP8: u1, HMP9: u1, HMP10: u1, HMP11: u1, HMP12: u1, HMP13: u1, HMP14: u1, HMP15: u1, HMP16: u1, HMP17: u1, HMP18: u1, HMP19: u1, HMP20: u1, HMP21: u1, HMP22: u1, HMP23: u1, HMP24: u1, HMP25: u1, HMP26: u1, HMP27: u1, HMP28: u1, HMP29: u1, HMP30: u1, HMP31: u1 };
@@ -588,9 +588,9 @@ pub fn CSRRS(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: typ
 
             const tmp =
                 hart_data.Zicsr.csr_load(csr_addr) catch {
-                hart_data.illegal_instruction();
-                return;
-            };
+                    hart_data.illegal_instruction();
+                    return;
+                };
 
             if (i.rd != 0) {
                 hart_data.I.regs[i.rd] = tmp;
@@ -650,9 +650,9 @@ pub fn CSRRC(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: typ
 
             const tmp =
                 hart_data.Zicsr.csr_load(csr_addr) catch {
-                hart_data.illegal_instruction();
-                return;
-            };
+                    hart_data.illegal_instruction();
+                    return;
+                };
 
             if (i.rd != 0) {
                 hart_data.I.regs[i.rd] = tmp;
@@ -759,9 +759,9 @@ pub fn CSRRSI(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: ty
 
             const tmp =
                 hart_data.Zicsr.csr_load(csr_addr) catch {
-                hart_data.illegal_instruction();
-                return;
-            };
+                    hart_data.illegal_instruction();
+                    return;
+                };
 
             if (i.rd != 0) {
                 hart_data.I.regs[i.rd] = tmp;
@@ -821,9 +821,9 @@ pub fn CSRRCI(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: ty
 
             const tmp =
                 hart_data.Zicsr.csr_load(csr_addr) catch {
-                hart_data.illegal_instruction();
-                return;
-            };
+                    hart_data.illegal_instruction();
+                    return;
+                };
 
             if (i.rd != 0) {
                 hart_data.I.regs[i.rd] = tmp;
