@@ -259,6 +259,7 @@ pub fn buildDataHart(comptime ARCH: base.Arch) type {
 
     return struct {
         pub const CAUSE = buildCause(ARCH);
+        pub const MNSTATUS = buildMNStatus(ARCH);
 
         mode: HartMode,
 
@@ -350,7 +351,7 @@ pub fn buildDataHart(comptime ARCH: base.Arch) type {
         mnscratch: uarch,
         mnepc: uarch,
         mncause: CAUSE,
-        mnstatus: buildMNStatus(ARCH),
+        mnstatus: MNSTATUS,
 
         fn csr_store(self: *@This(), csr_addr: u12, value: uarch) !void {
             switch (csr_addr) {
@@ -368,6 +369,10 @@ pub fn buildDataHart(comptime ARCH: base.Arch) type {
                 CSRAddr.satp.to_u12() => {
                     self.satp = @bitCast(value);
                     std.debug.print("SATP: {}\n", .{self.satp});
+
+                    if (self.mstatus.TVM == 1) {
+                        return error.TVM_IS_ON;
+                    }
 
                     switch (ARCH) {
                         .X32 => switch (self.satp.MODE) {
@@ -402,7 +407,11 @@ pub fn buildDataHart(comptime ARCH: base.Arch) type {
                 CSRAddr.mideleg.to_u12() => self.mideleg = @bitCast(value),
                 CSRAddr.medeleg.to_u12() => self.medeleg = @bitCast(value),
                 CSRAddr.mie.to_u12() => self.mie = @bitCast(value),
-                CSRAddr.mtvec.to_u12() => self.mtvec = @bitCast(value),
+                CSRAddr.mtvec.to_u12() => {
+                    self.mtvec = @bitCast(value);
+                    // TODO implement Vectored
+                    self.mtvec.mode = 0;
+                },
                 CSRAddr.mcounteren.to_u12() => self.mcounteren = @bitCast(@as(u32, @truncate(value))),
 
                 CSRAddr.mscratch.to_u12() => self.mscratch = value,
@@ -433,10 +442,10 @@ pub fn buildDataHart(comptime ARCH: base.Arch) type {
                 // CSRAddr.mnscratch.to_u12() => self.mnscratch = value,
                 // CSRAddr.mnepc.to_u12() => self.mnepc = value,
                 // CSRAddr.mncause.to_u12() => self.mncause = @bitCast(value),
-                // CSRAddr.mnstatus.to_u12() => self.mnstatus = @bitCast(value),
+                CSRAddr.mnstatus.to_u12() => self.mnstatus = @bitCast(value),
 
                 else => {
-                    std.debug.print("CSR_STORE: Unknown CSR\n", .{});
+                    std.debug.print("CSR_STORE: Unknown CSR: 0x{x}\n", .{csr_addr});
                     return error.UnknownCSR;
                 },
             }
@@ -457,7 +466,12 @@ pub fn buildDataHart(comptime ARCH: base.Arch) type {
                 CSRAddr.stval.to_u12() => return self.stval,
                 CSRAddr.sip.to_u12() => return @bitCast(self.sip),
 
-                CSRAddr.satp.to_u12() => return @bitCast(self.satp),
+                CSRAddr.satp.to_u12() => {
+                    if (self.mstatus.TVM == 1) {
+                        return error.TVM_IS_ON;
+                    }
+                    return @bitCast(self.satp);
+                },
 
                 CSRAddr.stimecmp.to_u12() => return @truncate(self.stimecmp),
 
@@ -868,6 +882,11 @@ pub fn SRET(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: type
 
             std.debug.assert(instr_data.len == 4);
 
+            if (hart_data.Zicsr.mstatus.TSR == 1) {
+                hart_data.illegal_instruction();
+                return;
+            }
+
             if (hart_data.Zicsr.mode != .S and hart_data.Zicsr.mode != .M) {
                 std.debug.print("SRET: HartMode is not M or S, is {s}\n", .{hart_data.Zicsr.mode.name()});
                 hart_data.illegal_instruction();
@@ -976,7 +995,84 @@ pub fn MNRET(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: typ
     };
 }
 
-pub fn buildInstrs(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: type) [9]Instruction(ARCH, DataEEI, DataHart) {
+pub fn WFI(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: type) type {
+    return struct {
+        pub fn check(instr_data: []const u8) bool {
+            if (instr_data.len != 4) return false;
+            const x32_instr = IFX32.from_u32(std.mem.readInt(u32, @ptrCast(instr_data), .little));
+
+            if (x32_instr.opcode != 0b1110011) return false; // SYSTEM opcode
+            if (x32_instr.i.rd != 0b000) return false; // WFI rd
+            if (x32_instr.i.funct3 != 0b000) return false; // WFI func3
+            if (x32_instr.i.rs1 != 0b000) return false; // WFI rs1
+            if (x32_instr.i.imm_11_0 != 0b000100000101) return false; // WFI
+
+            return true;
+        }
+
+        pub fn execute(eei_data: *DataEEI, hart_data: *DataHart, instr_data: []const u8) void {
+            _ = eei_data;
+
+            std.debug.assert(instr_data.len == 4);
+
+            if (hart_data.Zicsr.mstatus.TW == 1) {
+                std.debug.print("Timeout Wait\n", .{});
+                hart_data.illegal_instruction();
+                return;
+            }
+
+            hart_data.I.pc += 4;
+        }
+
+        pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
+            return .{
+                .check = &@This().check,
+                .execute = &@This().execute,
+            };
+        }
+    };
+}
+
+pub fn SFENCE_VMA(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: type) type {
+    return struct {
+        pub fn check(instr_data: []const u8) bool {
+            if (instr_data.len != 4) return false;
+            const x32_instr = IFX32.from_u32(std.mem.readInt(u32, @ptrCast(instr_data), .little));
+
+            if (x32_instr.opcode != 0b1110011) return false; // SYSTEM opcode
+            if (x32_instr.i.rd != 0b000) return false; // SFENCE_VMA rd
+            if (x32_instr.i.funct3 != 0b000) return false; // SFENCE_VMA func3
+            if (x32_instr.i.imm_11_0 >> 5 != 0b1001) return false; // SFENCE_VMA
+
+            return true;
+        }
+
+        pub fn execute(eei_data: *DataEEI, hart_data: *DataHart, instr_data: []const u8) void {
+            _ = eei_data;
+
+            std.debug.assert(instr_data.len == 4);
+
+            // TODO: SFENCE_VMA
+            std.debug.print("SFENCE_VMA not implemented\n", .{});
+
+            if (hart_data.Zicsr.mstatus.TVM == 1) {
+                hart_data.illegal_instruction();
+                return;
+            }
+
+            hart_data.I.pc += 4;
+        }
+
+        pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
+            return .{
+                .check = &@This().check,
+                .execute = &@This().execute,
+            };
+        }
+    };
+}
+
+pub fn buildInstrs(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: type) [11]Instruction(ARCH, DataEEI, DataHart) {
     return .{
         CSRRW(ARCH, DataEEI, DataHart).instr(),
         CSRRS(ARCH, DataEEI, DataHart).instr(),
@@ -984,8 +1080,13 @@ pub fn buildInstrs(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHar
         CSRRWI(ARCH, DataEEI, DataHart).instr(),
         CSRRSI(ARCH, DataEEI, DataHart).instr(),
         CSRRCI(ARCH, DataEEI, DataHart).instr(),
+
         SRET(ARCH, DataEEI, DataHart).instr(),
         MRET(ARCH, DataEEI, DataHart).instr(),
         MNRET(ARCH, DataEEI, DataHart).instr(),
+
+        WFI(ARCH, DataEEI, DataHart).instr(),
+
+        SFENCE_VMA(ARCH, DataEEI, DataHart).instr(),
     };
 }

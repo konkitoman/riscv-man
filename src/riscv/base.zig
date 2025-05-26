@@ -685,6 +685,14 @@ pub const VarInstr = union(enum) {
         }
     }
 
+    pub fn len(self: Self) usize {
+        return switch (self) {
+            .x16 => |_| 2,
+            .x32 => |_| 4,
+            .x64 => |_| 8,
+        };
+    }
+
     pub fn X16(data: u16) Self {
         return .{ .x16 = data };
     }
@@ -709,6 +717,14 @@ pub const VarInstr = union(enum) {
                 std.debug.print("X64 Instr: {b:0>64}\n", .{x});
             },
         }
+    }
+
+    pub fn write(self: Self, writer: std.io.AnyWriter) !void {
+        return switch (self) {
+            .x16 => |x| writer.print("X16 Instr: {b:0>16}\n", .{x}),
+            .x32 => |x| writer.print("X32 Instr: {b:0>32}\n", .{x}),
+            .x64 => |x| writer.print("X64 Instr: {b:0>64}\n", .{x}),
+        };
     }
 };
 

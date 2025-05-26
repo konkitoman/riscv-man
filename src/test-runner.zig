@@ -106,9 +106,28 @@ pub fn build(comptime ARCH: Arch) type {
             const CAUSE = Zicsr.buildDataHart(ARCH).CAUSE;
 
             pub fn read(self: *@This(), eei_data: *DataEEI, index: u64, buffer: []u8) bool {
-                _ = self;
+                switch (self.Zicsr.mode) {
+                    .M => eei_data.mmio_read(index, buffer),
+                    .S => {
+                        std.debug.print("{}\n", .{self.Zicsr.stvec});
+                        std.debug.print("{}\n", .{self.Zicsr.mideleg});
+                        if (self.Zicsr.satp.MODE == 0) {
+                            eei_data.mmio_read(index, buffer);
+                            return true;
+                        }
 
-                eei_data.mmio_read(index, buffer);
+                        std.debug.print("{}\n", .{self.Zicsr.satp});
+                        @panic("Supervisor");
+                    },
+                    .U => {
+                        if (self.Zicsr.satp.MODE == 0) {
+                            eei_data.mmio_read(index, buffer);
+                            return true;
+                        }
+                        @panic("User");
+                    },
+                    else => std.debug.panic("Uimplemented mode {}\n", .{self.Zicsr.mode}),
+                }
 
                 return true;
             }
@@ -182,7 +201,7 @@ pub fn build(comptime ARCH: Arch) type {
                     1 => { // VECTORED
                         // TODO: Implement VECTORED
                         @panic("VECTORED not implemented!");
-                        // self.pc = (mtvec ^ (mtvec & 0b11)) + (4 * (cause & 0xffffffff));
+                        // self.I.pc = (@as(uarch, tvec.base) << 2) +% (@as(uarch, cause.code) * 4);
                     },
                     else => {
                         @panic("Unknown MTVEC Mode!");

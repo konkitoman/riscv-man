@@ -119,6 +119,12 @@ pub fn JAL(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
             const pc = hart_data.I.pc + 4;
             hart_data.I.pc = @as(uarch, @bitCast(@as(iarch, @bitCast(hart_data.I.pc)) + (@as(iarch, @as(i21, @bitCast(rearrange(u20, u21, jimm.imm, &base.@"imm_20|10:1|11|19:12")))))));
+
+            if (pc - 4 == hart_data.I.pc) {
+                hart_data.illegal_instruction();
+                return;
+            }
+
             if (jimm.rd != 0) {
                 hart_data.I.regs[jimm.rd] = pc;
             }

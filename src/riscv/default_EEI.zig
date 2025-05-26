@@ -49,7 +49,7 @@ pub const DataEEI = struct {
             }
         }
 
-        debug.print("OUT of bound read: {x}-{x}", .{ address, address + buffer.len });
+        debug.print("OUT of bound read: {x}-{x}\n", .{ address, address + buffer.len });
         @memset(buffer, 0);
     }
 
@@ -61,7 +61,7 @@ pub const DataEEI = struct {
             }
         }
 
-        debug.print("OUT of bound write: {x}-{x}", .{ address, address + buffer.len });
+        debug.print("OUT of bound write: {x}-{x}\n", .{ address, address + buffer.len });
     }
 };
 
@@ -89,7 +89,7 @@ pub fn buildEEI(comptime ARCH: base.Arch, comptime harts: usize, DataHart: type,
                 if (run_with) |i| {
                     instructions[i].execute(eei_data, &self.data, &instr_data);
                 } else {
-                    @panic("Unknown instruction");
+                    self.data.illegal_instruction();
                 }
             }
         };

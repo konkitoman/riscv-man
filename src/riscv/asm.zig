@@ -68,9 +68,6 @@ pub const RV32I = union(enum) {
     FENCE_I,
     ECALL,
     EBREAK,
-    URET,
-    SRET,
-    MRET,
 
     const Self = @This();
 
@@ -117,9 +114,6 @@ pub const RV32I = union(enum) {
             .FENCE_I => (base.InstrFormatX32{ .f = .{ .fm = 0, .pred = .{}, .succ = .{}, .rs1 = 0, .func3 = 0b001, .rd = 0, .opcode = 0b0001111 } }).to_varinstr(),
             .ECALL => (base.InstrFormatX32{ .i = .{ .imm_11_0 = 0, .rs1 = 0, .funct3 = 0, .rd = 0, .opcode = 0b1110011 } }).to_varinstr(),
             .EBREAK => (base.InstrFormatX32{ .i = .{ .imm_11_0 = 1, .rs1 = 0, .funct3 = 0, .rd = 0, .opcode = 0b1110011 } }).to_varinstr(),
-            .URET => (base.InstrFormatX32{ .i = .{ .imm_11_0 = 2, .rs1 = 0, .funct3 = 0, .rd = 0, .opcode = 0b1110011 } }).to_varinstr(),
-            .SRET => (base.InstrFormatX32{ .i = .{ .imm_11_0 = 2 + (1 << 8), .rs1 = 0, .funct3 = 0, .rd = 0, .opcode = 0b1110011 } }).to_varinstr(),
-            .MRET => (base.InstrFormatX32{ .i = .{ .imm_11_0 = 2 + (3 << 8), .rs1 = 0, .funct3 = 0, .rd = 0, .opcode = 0b1110011 } }).to_varinstr(),
         };
 
         return vari.to_memory(memory);
@@ -199,15 +193,9 @@ pub const RV32I = union(enum) {
                         else => null,
                     },
                     0b1110011 => switch (i.i.funct3) {
-                        0b000 => switch (i.i.imm_11_0 & 31) {
+                        0b000 => switch (i.i.imm_11_0) {
                             0b00000 => .ECALL,
                             0b00001 => .EBREAK,
-                            0b00010 => switch (i.i.imm_11_0 >> 8) {
-                                0 => .URET,
-                                1 => .SRET,
-                                3 => .MRET,
-                                else => null,
-                            },
                             else => null,
                         },
                         else => null,
@@ -220,9 +208,8 @@ pub const RV32I = union(enum) {
     }
 
     pub fn len(self: Self) usize {
-        return switch (self) {
-            .LUI, .AUIPC, .JAL, .JALR, .BEQ, .BNE, .BLT, .BGE, .BLTU, .BGEU, .LB, .LH, .LW, .LBU, .LHU, .SB, .SH, .SW, .ADDI, .SLTI, .SLTIU, .XORI, .ORI, .ANDI, .SLLI, .SRLI, .SRAI, .ADD, .SUB, .SLL, .SLT, .SLTU, .XOR, .SRL, .SRA, .OR, .AND, .FENCE, .FENCE_I, .ECALL, .EBREAK, .URET, .SRET, .MRET => 4,
-        };
+        _ = self;
+        return 4;
     }
 
     pub fn write(self: Self, writer: std.io.AnyWriter) !void {
@@ -268,9 +255,6 @@ pub const RV32I = union(enum) {
             .FENCE_I => writer.print("FENCE.I\n", .{}),
             .ECALL => writer.print("ECALL\n", .{}),
             .EBREAK => writer.print("EBREAK\n", .{}),
-            .URET => writer.print("URET\n", .{}),
-            .SRET => writer.print("SRET\n", .{}),
-            .MRET => writer.print("MRET\n", .{}),
         };
     }
 
@@ -317,9 +301,6 @@ pub const RV32I = union(enum) {
             .FENCE_I => .{ IR.ZERO, IR.ZERO, IR.ZERO },
             .ECALL => .{ IR.ZERO, IR.ZERO, IR.ZERO },
             .EBREAK => .{ IR.ZERO, IR.ZERO, IR.ZERO },
-            .URET => .{ IR.ZERO, IR.ZERO, IR.ZERO },
-            .SRET => .{ IR.ZERO, IR.ZERO, IR.ZERO },
-            .MRET => .{ IR.ZERO, IR.ZERO, IR.ZERO },
         };
     }
 
@@ -442,15 +423,6 @@ pub const RV32I = union(enum) {
     }
     pub fn ebreak() Self {
         return .EBREAK;
-    }
-    pub fn uret() Self {
-        return .URET;
-    }
-    pub fn sret() Self {
-        return .SRET;
-    }
-    pub fn mret() Self {
-        return .MRET;
     }
 };
 
@@ -773,6 +745,17 @@ pub const Ziscr = union(enum) {
     CSRRSI: struct { rd: IR, uimm: u5, csr: u12 },
     CSRRCI: struct { rd: IR, uimm: u5, csr: u12 },
 
+    // Trap-Return Instruction
+    SRET,
+    MRET,
+    MNRET,
+
+    // Interrupt-Managment Instructions
+    WFI,
+
+    // Supervisor Memory-Management Instructions
+    SFENCE_VMA: struct { rs1: IR, rs2: IR },
+
     const Self = @This();
 
     pub fn to_memory(self: Self, memory: []u8) error{OutOfSpace}!usize {
@@ -783,6 +766,14 @@ pub const Ziscr = union(enum) {
             .CSRRWI => |i| (base.InstrFormatX32{ .i = .{ .imm_11_0 = @bitCast(i.csr), .rs1 = i.uimm, .funct3 = 0b101, .rd = i.rd.to_u5(), .opcode = 0b1110011 } }).to_varinstr(),
             .CSRRSI => |i| (base.InstrFormatX32{ .i = .{ .imm_11_0 = @bitCast(i.csr), .rs1 = i.uimm, .funct3 = 0b110, .rd = i.rd.to_u5(), .opcode = 0b1110011 } }).to_varinstr(),
             .CSRRCI => |i| (base.InstrFormatX32{ .i = .{ .imm_11_0 = @bitCast(i.csr), .rs1 = i.uimm, .funct3 = 0b111, .rd = i.rd.to_u5(), .opcode = 0b1110011 } }).to_varinstr(),
+
+            .SRET => (base.InstrFormatX32{ .i = .{ .imm_11_0 = 2 + (1 << 8), .rs1 = 0, .funct3 = 0, .rd = 0, .opcode = 0b1110011 } }).to_varinstr(),
+            .MRET => (base.InstrFormatX32{ .i = .{ .imm_11_0 = 2 + (3 << 8), .rs1 = 0, .funct3 = 0, .rd = 0, .opcode = 0b1110011 } }).to_varinstr(),
+            .MNRET => (base.InstrFormatX32{ .i = .{ .imm_11_0 = 2 + (7 << 8), .rs1 = 0, .funct3 = 0, .rd = 0, .opcode = 0b1110011 } }).to_varinstr(),
+
+            .WFI => (base.InstrFormatX32{ .i = .{ .imm_11_0 = 5 + (1 << 8), .rs1 = 0, .funct3 = 0, .rd = 0, .opcode = 0b1110011 } }).to_varinstr(),
+
+            .SFENCE_VMA => |i| (base.InstrFormatX32{ .i = .{ .imm_11_0 = @bitCast((@as(u12, 0b1001) << 5) + @as(u12, i.rs2.to_u5())), .rs1 = i.rs1.to_u5(), .funct3 = 0, .rd = 0, .opcode = 0b1110011 } }).to_varinstr(),
         };
 
         return vari.to_memory(memory);
@@ -795,6 +786,17 @@ pub const Ziscr = union(enum) {
 
                 return switch (i.opcode) {
                     0b1110011 => switch (i.i.funct3) {
+                        0b000 => switch (i.i.imm_11_0 >> 5) {
+                            0b1000 => switch (i.i.imm_11_0 & 0b11111) {
+                                0b10 => .SRET,
+                                0b101 => .WFI,
+                                else => null,
+                            },
+                            0b1001 => .{ .SFENCE_VMA = .{ .rs1 = IRf(i.i.rs1), .rs2 = IRf(@truncate(@as(u12, @bitCast(i.i.imm_11_0)) & 0b11111)) } },
+                            0b11000 => if (i.i.imm_11_0 & 0b11111 == 0b10) .MRET else null,
+                            0b111000 => if (i.i.imm_11_0 & 0b11111 == 0b10) .MNRET else null,
+                            else => null,
+                        },
                         0b001 => .{ .CSRRW = .{ .rd = IRf(i.i.rd), .rs1 = IRf(i.i.rs1), .csr = @bitCast(i.i.imm_11_0) } },
                         0b010 => .{ .CSRRS = .{ .rd = IRf(i.i.rd), .rs1 = IRf(i.i.rs1), .csr = @bitCast(i.i.imm_11_0) } },
                         0b011 => .{ .CSRRC = .{ .rd = IRf(i.i.rd), .rs1 = IRf(i.i.rs1), .csr = @bitCast(i.i.imm_11_0) } },
@@ -811,9 +813,8 @@ pub const Ziscr = union(enum) {
     }
 
     pub fn len(self: Self) usize {
-        return switch (self) {
-            .CSRRW, .CSRRS, .CSRRC, .CSRRWI, .CSRRSI, .CSRRCI => 4,
-        };
+        _ = self;
+        return 4;
     }
 
     pub fn write(self: Self, writer: std.io.AnyWriter) !void {
@@ -824,6 +825,14 @@ pub const Ziscr = union(enum) {
             .CSRRWI => |i| writer.print("CSRRWI {s}, {s}, 0x{x}\n", .{ i.rd.name(), base.CSRAddrU.from_u12(i.csr).name(), i.uimm }),
             .CSRRSI => |i| writer.print("CSRRSI {s}, {s}, 0x{x}\n", .{ i.rd.name(), base.CSRAddrU.from_u12(i.csr).name(), i.uimm }),
             .CSRRCI => |i| writer.print("CSRRCI {s}, {s}, 0x{x}\n", .{ i.rd.name(), base.CSRAddrU.from_u12(i.csr).name(), i.uimm }),
+
+            .SRET => writer.print("SRET\n", .{}),
+            .MRET => writer.print("MRET\n", .{}),
+            .MNRET => writer.print("MNRET\n", .{}),
+
+            .WFI => writer.print("WFI\n", .{}),
+
+            .SFENCE_VMA => |i| writer.print("SFANCE_VMA {s}, {s}\n", .{ i.rs1.name(), i.rs2.name() }),
         };
     }
 
@@ -835,6 +844,14 @@ pub const Ziscr = union(enum) {
             .CSRRWI => |i| .{ i.rd, IR.ZERO, IR.ZERO },
             .CSRRSI => |i| .{ i.rd, IR.ZERO, IR.ZERO },
             .CSRRCI => |i| .{ i.rd, IR.ZERO, IR.ZERO },
+
+            .SRET => .{ IR.ZERO, IR.ZERO, IR.ZERO },
+            .MRET => .{ IR.ZERO, IR.ZERO, IR.ZERO },
+            .MNRET => .{ IR.ZERO, IR.ZERO, IR.ZERO },
+
+            .WFI => .{ IR.ZERO, IR.ZERO, IR.ZERO },
+
+            .SFENCE_VMA => |i| .{ i.rs1, i.rs2, IR.ZERO },
         };
     }
 
@@ -1404,6 +1421,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
             rv64m: RV64M,
             rv64c: RV64C,
             rv32z_aamo: RV32Zaamo,
+            unknown: base.VarInstr,
 
             const Self = @This();
 
@@ -1417,10 +1435,11 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv32c => |i| i.to_memory(memory),
                     .rv64c => |i| i.to_memory(memory),
                     .rv32z_aamo => |i| i.to_memory(memory),
+                    .unknown => |u| u.to_memory(memory),
                 };
             }
 
-            pub fn from_memory(memory: []const u8) error{ EndOfStream, VarInstrNotImplemented, Unimplemented }!Self {
+            pub fn from_memory(memory: []const u8) error{ EndOfStream, VarInstrNotImplemented }!Self {
                 const v = try base.VarInstr.from_memory(memory);
                 if (RV64I.from_memory(v)) |i| {
                     return .{ .rv64i = i };
@@ -1448,7 +1467,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                 }
 
                 v.debug();
-                return error.Unimplemented;
+                return .{ .unknown = v };
             }
 
             pub fn len(self: Self) usize {
@@ -1461,6 +1480,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv32c => |i| i.len(),
                     .rv64c => |i| i.len(),
                     .rv32z_aamo => |i| i.len(),
+                    .unknown => |u| u.len(),
                 };
             }
 
@@ -1474,6 +1494,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv32c => |i| i.write(writer),
                     .rv64c => |i| i.write(writer),
                     .rv32z_aamo => |i| i.write(writer),
+                    .unknown => |u| u.write(writer),
                 };
             }
 
@@ -1487,6 +1508,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv32c => |i| i.used_grs(),
                     .rv64c => |i| i.used_grs(),
                     .rv32z_aamo => |i| i.used_grs(),
+                    .unknown => |_| .{ IR.ZERO, IR.ZERO, IR.ZERO },
                 };
             }
         },
