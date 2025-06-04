@@ -106,27 +106,60 @@ pub fn build(comptime ARCH: Arch) type {
             const CAUSE = Zicsr.buildDataHart(ARCH).CAUSE;
 
             pub fn read(self: *@This(), eei_data: *DataEEI, index: u64, buffer: []u8) bool {
-                switch (self.Zicsr.mode) {
-                    .M => eei_data.mmio_read(index, buffer),
-                    .S => {
-                        std.debug.print("{}\n", .{self.Zicsr.stvec});
-                        std.debug.print("{}\n", .{self.Zicsr.mideleg});
-                        if (self.Zicsr.satp.MODE == 0) {
-                            eei_data.mmio_read(index, buffer);
-                            return true;
-                        }
+                switch (self.Zicsr.xlen) {
+                    .X32 => {
+                        const stvec = @as(Zicsr.X32TVEC, @bitCast(@as(u32, @truncate(self.Zicsr.stvec))));
+                        const satp = @as(Zicsr.X32SATP, @bitCast(@as(u32, @truncate(self.Zicsr.satp))));
+                        switch (self.Zicsr.mode) {
+                            .M => eei_data.mmio_read(index, buffer),
+                            .S => {
+                                std.debug.print("{}\n", .{stvec});
+                                std.debug.print("{}\n", .{self.Zicsr.mideleg});
+                                if (satp.MODE == 0) {
+                                    eei_data.mmio_read(index, buffer);
+                                    return true;
+                                }
 
-                        std.debug.print("{}\n", .{self.Zicsr.satp});
-                        @panic("Supervisor");
-                    },
-                    .U => {
-                        if (self.Zicsr.satp.MODE == 0) {
-                            eei_data.mmio_read(index, buffer);
-                            return true;
+                                std.debug.print("{}\n", .{satp});
+                                @panic("Supervisor");
+                            },
+                            .U => {
+                                if (satp.MODE == 0) {
+                                    eei_data.mmio_read(index, buffer);
+                                    return true;
+                                }
+                                @panic("User");
+                            },
+                            else => std.debug.panic("Uimplemented mode {}\n", .{self.Zicsr.mode}),
                         }
-                        @panic("User");
                     },
-                    else => std.debug.panic("Uimplemented mode {}\n", .{self.Zicsr.mode}),
+                    .X64 => {
+                        if (ARCH == .X32) unreachable;
+                        const stvec = @as(Zicsr.X64TVEC, @bitCast(@as(u64, @truncate(self.Zicsr.stvec))));
+                        const satp = @as(Zicsr.X64SATP, @bitCast(@as(u64, @truncate(self.Zicsr.satp))));
+                        switch (self.Zicsr.mode) {
+                            .M => eei_data.mmio_read(index, buffer),
+                            .S => {
+                                std.debug.print("{}\n", .{stvec});
+                                std.debug.print("{}\n", .{self.Zicsr.mideleg});
+                                if (satp.MODE == 0) {
+                                    eei_data.mmio_read(index, buffer);
+                                    return true;
+                                }
+
+                                std.debug.print("{}\n", .{satp});
+                                @panic("Supervisor");
+                            },
+                            .U => {
+                                if (satp.MODE == 0) {
+                                    eei_data.mmio_read(index, buffer);
+                                    return true;
+                                }
+                                @panic("User");
+                            },
+                            else => std.debug.panic("Uimplemented mode {}\n", .{self.Zicsr.mode}),
+                        }
+                    },
                 }
 
                 return true;
@@ -189,22 +222,50 @@ pub fn build(comptime ARCH: Arch) type {
             }
 
             fn m_trap(self: *@This(), cause: CAUSE) void {
-                self.Zicsr.mstatus.MPP = self.Zicsr.mode.to_u2();
-                self.Zicsr.mode = .M;
-                self.Zicsr.mepc = self.I.pc;
-                self.Zicsr.mcause = cause;
-                const tvec = self.Zicsr.mtvec;
-                switch (tvec.mode) {
-                    0 => { // DIRECT
-                        self.I.pc = @as(uarch, tvec.base) << 2;
+                self.Zicsr.xlen = ARCH;
+
+                switch (ARCH) {
+                    .X32 => {
+                        const mstatus = @as(*Zicsr.X32MSTATUS, @ptrCast(&self.Zicsr.mstatus));
+                        mstatus.MPP = self.Zicsr.mode.to_u2();
+                        self.Zicsr.mode = .M;
+                        self.Zicsr.mepc = self.I.pc;
+                        self.Zicsr.mcause = cause;
+                        const tvec = @as(Zicsr.X32TVEC, @bitCast(self.Zicsr.mtvec));
+                        switch (tvec.mode) {
+                            0 => { // DIRECT
+                                self.I.pc = @as(uarch, tvec.base) << 2;
+                            },
+                            1 => { // VECTORED
+                                // TODO: Implement VECTORED
+                                @panic("VECTORED not implemented!");
+                                // self.I.pc = (@as(uarch, tvec.base) << 2) +% (@as(uarch, cause.code) * 4);
+                            },
+                            else => {
+                                @panic("Unknown MTVEC Mode!");
+                            },
+                        }
                     },
-                    1 => { // VECTORED
-                        // TODO: Implement VECTORED
-                        @panic("VECTORED not implemented!");
-                        // self.I.pc = (@as(uarch, tvec.base) << 2) +% (@as(uarch, cause.code) * 4);
-                    },
-                    else => {
-                        @panic("Unknown MTVEC Mode!");
+                    .X64 => {
+                        const mstatus = @as(*Zicsr.X64MSTATUS, @ptrCast(&self.Zicsr.mstatus));
+                        mstatus.MPP = self.Zicsr.mode.to_u2();
+                        self.Zicsr.mode = .M;
+                        self.Zicsr.mepc = self.I.pc;
+                        self.Zicsr.mcause = cause;
+                        const tvec = @as(Zicsr.X64TVEC, @bitCast(self.Zicsr.mtvec));
+                        switch (tvec.mode) {
+                            0 => { // DIRECT
+                                self.I.pc = @as(uarch, tvec.base) << 2;
+                            },
+                            1 => { // VECTORED
+                                // TODO: Implement VECTORED
+                                @panic("VECTORED not implemented!");
+                                // self.I.pc = (@as(uarch, tvec.base) << 2) +% (@as(uarch, cause.code) * 4);
+                            },
+                            else => {
+                                @panic("Unknown MTVEC Mode!");
+                            },
+                        }
                     },
                 }
             }

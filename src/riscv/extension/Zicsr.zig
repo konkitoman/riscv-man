@@ -254,7 +254,7 @@ pub const X32PMPCFG_N = packed struct {
     pmpcfg3: PMPCFG,
 };
 
-pub fn buildDataHart(comptime ARCH: base.Arch) type {
+pub fn buildDataHart(comptime ARCH: Arch) type {
     const uarch = ARCH.uarch();
 
     return struct {
@@ -262,37 +262,26 @@ pub fn buildDataHart(comptime ARCH: base.Arch) type {
         pub const MNSTATUS = buildMNStatus(ARCH);
 
         mode: HartMode,
+        xlen: Arch = ARCH,
 
         time: u64,
 
         /// # Supervisor Trap Setup
-        sstatus: switch (ARCH) {
-            .X32 => X32SSTATUS,
-            .X64 => X64SSTATUS,
-        },
+        sstatus: u64,
         sie: uarch,
-        stvec: switch (ARCH) {
-            .X32 => X32TVEC,
-            .X64 => X64TVEC,
-        },
-        scounteren: MCOUNTEREN,
+        stvec: uarch,
+        scounteren: u32,
 
         /// # Supervisor Trap Handling
         sscratch: uarch,
         sepc: uarch,
-        scause: CAUSE,
+        scause: uarch,
         stval: uarch,
-        sip: switch (ARCH) {
-            .X32 => X32MIP,
-            .X64 => X64MIP,
-        },
+        sip: uarch,
         // scountovf
 
         /// # Supervisor Protection and Translation
-        satp: switch (ARCH) {
-            .X32 => X32SATP,
-            .X64 => X64SATP,
-        },
+        satp: uarch,
 
         stimecmp: u64,
 
@@ -304,33 +293,20 @@ pub fn buildDataHart(comptime ARCH: base.Arch) type {
         mconfigptr: uarch,
 
         /// # Machine Trap Setup
-        mstatus: switch (ARCH) {
-            .X32 => X32MSTATUS,
-            .X64 => X64MSTATUS,
-        },
+        mstatus: u64,
         misa: uarch,
         medeleg: uarch,
         mideleg: uarch,
-        mie: switch (ARCH) {
-            .X32 => X32MIE,
-            .X64 => X64MIE,
-        },
-        mtvec: switch (ARCH) {
-            .X32 => X32TVEC,
-            .X64 => X64TVEC,
-        },
+        mie: uarch,
+        mtvec: uarch,
         mcounteren: MCOUNTEREN,
-        mstatush: if (ARCH == .X32) X32MSTATUSH else u0,
 
         /// # Machine Trap Handling
         mscratch: uarch,
         mepc: uarch,
         mcause: CAUSE,
         mtval: uarch,
-        mip: switch (ARCH) {
-            .X32 => X32MIP,
-            .X64 => X64MIP,
-        },
+        mip: uarch,
         mtinst: uarch,
         mtval2: uarch,
 
@@ -339,10 +315,8 @@ pub fn buildDataHart(comptime ARCH: base.Arch) type {
         // mseccfg
 
         /// # Machine Memory Protection
-        pmpcfg0: switch (ARCH) {
-            .X32 => X32PMPCFG_N,
-            .X64 => X64PMPCFG_N,
-        },
+        pmpcfg0_1: u64,
+        pmpcfg2_3: u64,
         // .. pmpcfg15
         pmpaddr0: uarch,
         // .. pmpaddr63
@@ -355,62 +329,86 @@ pub fn buildDataHart(comptime ARCH: base.Arch) type {
 
         fn csr_store(self: *@This(), csr_addr: u12, value: uarch) !void {
             switch (csr_addr) {
-                CSRAddr.sstatus.to_u12() => self.sstatus = @bitCast(value),
+                CSRAddr.sstatus.to_u12() => self.sstatus = value,
                 CSRAddr.sie.to_u12() => self.sie = value,
-                CSRAddr.stvec.to_u12() => self.stvec = @bitCast(value),
-                CSRAddr.scounteren.to_u12() => self.scounteren = @bitCast(@as(u32, @truncate(value))),
+                CSRAddr.stvec.to_u12() => self.stvec = value,
+                CSRAddr.scounteren.to_u12() => self.scounteren = @truncate(value),
 
                 CSRAddr.sscratch.to_u12() => self.sscratch = value,
                 CSRAddr.sepc.to_u12() => self.sepc = value,
-                CSRAddr.scause.to_u12() => self.scause = @bitCast(value),
+                CSRAddr.scause.to_u12() => self.scause = value,
                 CSRAddr.stval.to_u12() => self.stval = value,
-                CSRAddr.sip.to_u12() => self.sip = @bitCast(value),
+                CSRAddr.sip.to_u12() => self.sip = value,
 
-                CSRAddr.satp.to_u12() => {
-                    self.satp = @bitCast(value);
-                    std.debug.print("SATP: {}\n", .{self.satp});
+                CSRAddr.satp.to_u12() => switch (self.xlen) {
+                    .X32 => {
+                        self.satp = @truncate(value);
+                        const mstatus = @as(X32MSTATUS, @bitCast(@as(u32, @truncate(self.mstatus))));
+                        const satp = @as(X32SATP, @bitCast(@as(u32, @truncate(self.satp))));
+                        std.debug.print("SATP: {}\n", .{satp});
 
-                    if (self.mstatus.TVM == 1) {
-                        return error.TVM_IS_ON;
-                    }
+                        if (mstatus.TVM == 1) {
+                            return error.TVM_IS_ON;
+                        }
 
-                    switch (ARCH) {
-                        .X32 => switch (self.satp.MODE) {
+                        switch (satp.MODE) {
                             0 => {}, // Bare
                             1 => { // Sv32
-                                const root = @as(uarch, self.satp.PPN) * std.math.pow(uarch, 2, 10) * 4;
+                                const root = @as(uarch, satp.PPN) * std.math.pow(uarch, 2, 10) * 4;
                                 std.debug.print("Root: 0x{x}\n", .{root});
                             },
-                        },
-                        .X64 => switch (self.satp.MODE) {
+                        }
+                    },
+                    .X64 => {
+                        if (ARCH == .X32) unreachable;
+                        self.satp = @truncate(value);
+                        const mstatus = @as(X64MSTATUS, @bitCast(@as(u64, @truncate(self.mstatus))));
+                        const satp = @as(X64SATP, @bitCast(@as(u64, @truncate(self.satp))));
+                        std.debug.print("SATP: {}\n", .{satp});
+
+                        if (mstatus.TVM == 1) {
+                            return error.TVM_IS_ON;
+                        }
+
+                        switch (satp.MODE) {
                             0 => {}, // Bare
                             else => {
                                 @panic("Not implemented");
                             },
-                        },
-                    }
+                        }
+                    },
                 },
 
-                CSRAddr.stimecmp.to_u12() => switch (ARCH) {
+                CSRAddr.stimecmp.to_u12() => switch (self.xlen) {
                     .X32 => {
-                        self.stimecmp = ((self.stimecmp & 0xffffffff) ^ (self.stimecmp & 0xffffffff)) | value;
+                        self.stimecmp = (self.stimecmp & (0xffffffff << 32)) | value;
                     },
                     .X64 => self.stimecmp = value,
                 },
-                CSRAddr.stimecmph.to_u12() => if (ARCH == .X32) {
-                    const mask = 0xffffffff << 32;
-                    self.stimecmp = ((self.stimecmp & mask) ^ (self.stimecmp & mask)) | (@as(u64, value) << 32);
+                CSRAddr.stimecmph.to_u12() => if (self.xlen == .X32) {
+                    self.stimecmp = (self.stimecmp & 0xffffffff) | (@as(u64, value) << 32);
                 },
 
-                CSRAddr.mstatus.to_u12() => self.mstatus = @bitCast(value),
-                CSRAddr.misa.to_u12() => self.misa = @bitCast(value),
-                CSRAddr.mideleg.to_u12() => self.mideleg = @bitCast(value),
-                CSRAddr.medeleg.to_u12() => self.medeleg = @bitCast(value),
-                CSRAddr.mie.to_u12() => self.mie = @bitCast(value),
+                CSRAddr.mstatus.to_u12() => self.mstatus = value,
+                CSRAddr.misa.to_u12() => self.misa = value,
+                CSRAddr.mideleg.to_u12() => self.mideleg = value,
+                CSRAddr.medeleg.to_u12() => self.medeleg = value,
+                CSRAddr.mie.to_u12() => self.mie = value,
                 CSRAddr.mtvec.to_u12() => {
-                    self.mtvec = @bitCast(value);
                     // TODO implement Vectored
-                    self.mtvec.mode = 0;
+                    switch (self.xlen) {
+                        .X32 => {
+                            self.mtvec = @as(u32, @truncate(value));
+                            const mtvec = @as(*X32TVEC, @ptrCast(&self.mtvec));
+                            mtvec.mode = 0;
+                        },
+                        .X64 => {
+                            if (ARCH == .X32) unreachable;
+                            self.mtvec = @as(u64, @truncate(value));
+                            const mtvec = @as(*X64TVEC, @ptrCast(&self.mtvec));
+                            mtvec.mode = 0;
+                        },
+                    }
                 },
                 CSRAddr.mcounteren.to_u12() => self.mcounteren = @bitCast(@as(u32, @truncate(value))),
 
@@ -418,25 +416,28 @@ pub fn buildDataHart(comptime ARCH: base.Arch) type {
                 CSRAddr.mepc.to_u12() => self.mepc = value,
                 CSRAddr.mcause.to_u12() => self.mcause = @bitCast(value),
                 CSRAddr.mtval.to_u12() => self.mtval = value,
-                CSRAddr.mip.to_u12() => self.mip = @bitCast(value),
+                CSRAddr.mip.to_u12() => self.mip = value,
                 CSRAddr.mtinst.to_u12() => self.mtinst = value,
                 CSRAddr.mtval2.to_u12() => self.mtval2 = value,
 
-                CSRAddr.menvcfg.to_u12() => switch (ARCH) {
+                CSRAddr.menvcfg.to_u12() => switch (self.xlen) {
                     .X32 => {
                         const mask: u64 = 0xffffffff;
                         const menvcfg: u64 = @bitCast(self.menvcfg);
-                        self.menvcfg = @bitCast(((menvcfg & mask) ^ (menvcfg & mask)) | value);
+                        self.menvcfg = @bitCast(((menvcfg & mask) ^ (menvcfg & mask)) | @as(u32, @truncate(value)));
                     },
-                    .X64 => self.menvcfg = @bitCast(value),
+                    .X64 => {
+                        if (ARCH == .X32) unreachable;
+                        self.menvcfg = @bitCast(@as(u64, @truncate(value)));
+                    },
                 },
-                CSRAddr.menvcfgh.to_u12() => if (ARCH == .X32) {
+                CSRAddr.menvcfgh.to_u12() => if (self.xlen == .X32) {
                     const mask: u64 = 0xffffffff << 32;
                     const menvcfg: u64 = @bitCast(self.menvcfg);
                     self.menvcfg = @bitCast(((menvcfg & mask) ^ (menvcfg & mask)) | (@as(u64, value) << 32));
                 },
 
-                CSRAddr.pmpcfg0.to_u12() => self.pmpcfg0 = @bitCast(value),
+                CSRAddr.pmpcfg0.to_u12() => self.pmpcfg0_1 = value,
                 CSRAddr.pmpaddr0.to_u12() => self.pmpaddr0 = value,
 
                 // CSRAddr.mnscratch.to_u12() => self.mnscratch = value,
@@ -455,22 +456,35 @@ pub fn buildDataHart(comptime ARCH: base.Arch) type {
             switch (csr_addr) {
                 CSRAddr.time.to_u12() => return @truncate(self.time),
 
-                CSRAddr.sstatus.to_u12() => return @bitCast(self.sstatus),
+                CSRAddr.sstatus.to_u12() => return @truncate(self.sstatus),
                 CSRAddr.sie.to_u12() => return self.sie,
-                CSRAddr.stvec.to_u12() => return @bitCast(self.stvec),
-                CSRAddr.scounteren.to_u12() => return @as(u32, @bitCast(self.scounteren)),
+                CSRAddr.stvec.to_u12() => return self.stvec,
+                CSRAddr.scounteren.to_u12() => return self.scounteren,
 
                 CSRAddr.sscratch.to_u12() => return self.sscratch,
                 CSRAddr.sepc.to_u12() => return self.sepc,
-                CSRAddr.scause.to_u12() => return @bitCast(self.scause),
+                CSRAddr.scause.to_u12() => return self.scause,
                 CSRAddr.stval.to_u12() => return self.stval,
-                CSRAddr.sip.to_u12() => return @bitCast(self.sip),
+                CSRAddr.sip.to_u12() => return self.sip,
 
                 CSRAddr.satp.to_u12() => {
-                    if (self.mstatus.TVM == 1) {
-                        return error.TVM_IS_ON;
+                    switch (self.xlen) {
+                        .X32 => {
+                            const mstatus = @as(X32MSTATUS, @bitCast(@as(u32, @truncate(self.mstatus))));
+                            if (mstatus.TVM == 1) {
+                                return error.TVM_IS_ON;
+                            }
+                            return @as(u32, @truncate(self.satp));
+                        },
+                        .X64 => {
+                            if (ARCH == .X32) unreachable;
+                            const mstatus = @as(X32MSTATUS, @bitCast(@as(u32, @truncate(self.mstatus))));
+                            if (mstatus.TVM == 1) {
+                                return error.TVM_IS_ON;
+                            }
+                            return @as(u64, @truncate(self.satp));
+                        },
                     }
-                    return @bitCast(self.satp);
                 },
 
                 CSRAddr.stimecmp.to_u12() => return @truncate(self.stimecmp),
@@ -481,30 +495,30 @@ pub fn buildDataHart(comptime ARCH: base.Arch) type {
                 CSRAddr.mhartid.to_u12() => return self.mhartid,
                 CSRAddr.mconfigptr.to_u12() => return self.mconfigptr,
 
-                CSRAddr.mstatus.to_u12() => return @bitCast(self.mstatus),
-                CSRAddr.misa.to_u12() => return @bitCast(self.misa),
+                CSRAddr.mstatus.to_u12() => return @truncate(self.mstatus),
+                CSRAddr.misa.to_u12() => return self.misa,
                 CSRAddr.mideleg.to_u12() => return self.mideleg,
                 CSRAddr.medeleg.to_u12() => return self.medeleg,
-                CSRAddr.mie.to_u12() => return @bitCast(self.mie),
-                CSRAddr.mtvec.to_u12() => return @bitCast(self.mtvec),
+                CSRAddr.mie.to_u12() => return self.mie,
+                CSRAddr.mtvec.to_u12() => return self.mtvec,
 
                 CSRAddr.mscratch.to_u12() => return self.mscratch,
                 CSRAddr.mepc.to_u12() => return self.mepc,
                 CSRAddr.mcause.to_u12() => return @bitCast(self.mcause),
                 CSRAddr.mtval.to_u12() => return self.mtval,
                 CSRAddr.mcounteren.to_u12() => return @as(u32, @bitCast(self.mcounteren)),
-                CSRAddr.mip.to_u12() => return @bitCast(self.mip),
+                CSRAddr.mip.to_u12() => return self.mip,
                 CSRAddr.mtinst.to_u12() => return self.mtinst,
                 CSRAddr.mtval2.to_u12() => return self.mtval2,
 
                 CSRAddr.menvcfg.to_u12() => return @truncate(@as(u64, @bitCast(self.menvcfg))),
-                CSRAddr.menvcfgh.to_u12() => if (ARCH == .X32) {
+                CSRAddr.menvcfgh.to_u12() => if (self.xlen == .X32) {
                     return @truncate(@as(u64, @bitCast(self.menvcfg)) >> 32);
                 } else {
                     return 0;
                 },
 
-                CSRAddr.pmpcfg0.to_u12() => return @bitCast(self.pmpcfg0),
+                CSRAddr.pmpcfg0.to_u12() => return @truncate(self.pmpcfg0_1),
                 CSRAddr.pmpaddr0.to_u12() => return self.pmpaddr0,
                 else => {
                     std.debug.print("CSR_LOAD: Unknown CSR\n", .{});
@@ -882,23 +896,56 @@ pub fn SRET(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: type
 
             std.debug.assert(instr_data.len == 4);
 
-            if (hart_data.Zicsr.mstatus.TSR == 1) {
-                hart_data.illegal_instruction();
-                return;
-            }
-
             if (hart_data.Zicsr.mode != .S and hart_data.Zicsr.mode != .M) {
                 std.debug.print("SRET: HartMode is not M or S, is {s}\n", .{hart_data.Zicsr.mode.name()});
                 hart_data.illegal_instruction();
                 return;
             }
 
-            hart_data.I.pc = hart_data.Zicsr.sepc;
-            const sstatus = &hart_data.Zicsr.sstatus;
-            sstatus.SIE = sstatus.SPIE;
-            hart_data.Zicsr.mode = HartMode.from_u2(sstatus.SPP);
-            sstatus.SPIE = 1;
-            sstatus.SPP = @truncate(HartMode.U.to_u2());
+            switch (hart_data.Zicsr.xlen) {
+                .X32 => {
+                    if (@as(X32MSTATUS, @bitCast(@as(u32, @truncate(hart_data.Zicsr.mstatus)))).TSR == 1) {
+                        hart_data.illegal_instruction();
+                        return;
+                    }
+
+                    hart_data.I.pc = hart_data.Zicsr.sepc;
+                    const sstatus = @as(*X32SSTATUS, @ptrCast(&hart_data.Zicsr.sstatus));
+                    sstatus.SIE = sstatus.SPIE;
+                    if (sstatus.SPP == 0) {
+                        sstatus.SDT = 0;
+                    }
+                    hart_data.Zicsr.mode = HartMode.from_u2(sstatus.SPP);
+                    sstatus.SPIE = 1;
+                    sstatus.SPP = @truncate(HartMode.U.to_u2());
+                },
+                .X64 => {
+                    if (ARCH == .X32) unreachable;
+                    if (@as(X64MSTATUS, @bitCast(@as(u64, @truncate(hart_data.Zicsr.mstatus)))).TSR == 1) {
+                        hart_data.illegal_instruction();
+                        return;
+                    }
+
+                    hart_data.I.pc = hart_data.Zicsr.sepc;
+                    const sstatus = @as(*X64SSTATUS, @ptrCast(&hart_data.Zicsr.sstatus));
+                    sstatus.SIE = sstatus.SPIE;
+                    if (sstatus.SPP == 0) {
+                        sstatus.SDT = 0;
+                    }
+                    hart_data.Zicsr.mode = HartMode.from_u2(sstatus.SPP);
+
+                    if (sstatus.SPP == HartMode.U.to_u2()) {
+                        switch (sstatus.UXL) {
+                            1 => hart_data.Zicsr.xlen = .X32,
+                            2 => hart_data.Zicsr.xlen = .X64,
+                            else => {},
+                        }
+                    }
+
+                    sstatus.SPIE = 1;
+                    sstatus.SPP = @truncate(HartMode.U.to_u2());
+                },
+            }
         }
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
@@ -935,12 +982,46 @@ pub fn MRET(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: type
                 hart_data.illegal_instruction();
                 return;
             }
-            hart_data.I.pc = hart_data.Zicsr.mepc;
-            const mstatus = &hart_data.Zicsr.mstatus;
-            mstatus.MIE = mstatus.MPIE;
-            hart_data.Zicsr.mode = HartMode.from_u2(mstatus.MPP);
-            mstatus.MPIE = 1;
-            mstatus.MPP = HartMode.U.to_u2();
+
+            switch (hart_data.Zicsr.xlen) {
+                .X32 => {
+                    hart_data.I.pc = @as(u32, @truncate(hart_data.Zicsr.mepc));
+                    const mstatus = @as(*X32MSTATUS, @ptrCast(&hart_data.Zicsr.mstatus));
+                    const mstatush = @as(*X32MSTATUSH, @ptrCast(@as(*[2]u32, @ptrCast(&hart_data.Zicsr.mstatus))[1..2]));
+                    mstatus.MIE = mstatus.MPIE;
+                    mstatush.MDT = 0;
+                    hart_data.Zicsr.mode = HartMode.from_u2(mstatus.MPP);
+                    mstatus.MPIE = 1;
+                    mstatus.MPP = HartMode.U.to_u2();
+                },
+                .X64 => {
+                    if (ARCH == .X32) unreachable;
+                    hart_data.I.pc = @as(u64, @truncate(hart_data.Zicsr.mepc));
+                    const mstatus = @as(*X64MSTATUS, @ptrCast(&hart_data.Zicsr.mstatus));
+                    mstatus.MIE = mstatus.MPIE;
+                    mstatus.MDT = 0;
+                    hart_data.Zicsr.mode = HartMode.from_u2(mstatus.MPP);
+
+                    if (mstatus.MPP == HartMode.U.to_u2()) {
+                        switch (mstatus.UXL) {
+                            1 => hart_data.Zicsr.xlen = .X32,
+                            2 => hart_data.Zicsr.xlen = .X64,
+                            else => {},
+                        }
+                    }
+
+                    if (mstatus.MPP == HartMode.S.to_u2()) {
+                        switch (mstatus.SXL) {
+                            1 => hart_data.Zicsr.xlen = .X32,
+                            2 => hart_data.Zicsr.xlen = .X64,
+                            else => {},
+                        }
+                    }
+
+                    mstatus.MPIE = 1;
+                    mstatus.MPP = HartMode.U.to_u2();
+                },
+            }
         }
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
@@ -1015,10 +1096,22 @@ pub fn WFI(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: type)
 
             std.debug.assert(instr_data.len == 4);
 
-            if (hart_data.Zicsr.mstatus.TW == 1) {
-                std.debug.print("Timeout Wait\n", .{});
-                hart_data.illegal_instruction();
-                return;
+            switch (hart_data.Zicsr.xlen) {
+                .X32 => {
+                    if (@as(X32MSTATUS, @bitCast(@as(u32, @truncate(hart_data.Zicsr.mstatus)))).TW == 1) {
+                        std.debug.print("Timeout Wait\n", .{});
+                        hart_data.illegal_instruction();
+                        return;
+                    }
+                },
+                .X64 => {
+                    if (ARCH == .X32) unreachable;
+                    if (@as(X64MSTATUS, @bitCast(@as(u64, @truncate(hart_data.Zicsr.mstatus)))).TW == 1) {
+                        std.debug.print("Timeout Wait\n", .{});
+                        hart_data.illegal_instruction();
+                        return;
+                    }
+                },
             }
 
             hart_data.I.pc += 4;
@@ -1055,9 +1148,20 @@ pub fn SFENCE_VMA(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart
             // TODO: SFENCE_VMA
             std.debug.print("SFENCE_VMA not implemented\n", .{});
 
-            if (hart_data.Zicsr.mstatus.TVM == 1) {
-                hart_data.illegal_instruction();
-                return;
+            switch (hart_data.Zicsr.xlen) {
+                .X32 => {
+                    if (@as(X32MSTATUS, @bitCast(@as(u32, @truncate(hart_data.Zicsr.mstatus)))).TVM == 1) {
+                        hart_data.illegal_instruction();
+                        return;
+                    }
+                },
+                .X64 => {
+                    if (ARCH == .X32) unreachable;
+                    if (@as(X64MSTATUS, @bitCast(@as(u64, @truncate(hart_data.Zicsr.mstatus)))).TVM == 1) {
+                        hart_data.illegal_instruction();
+                        return;
+                    }
+                },
             }
 
             hart_data.I.pc += 4;
