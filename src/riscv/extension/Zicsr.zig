@@ -267,7 +267,7 @@ pub fn buildDataHart(comptime ARCH: Arch) type {
         time: u64,
 
         /// # Supervisor Trap Setup
-        sstatus: u64,
+        sstatus: u64 = @bitCast(std.mem.zeroInit(X64SSTATUS, .{ .UXL = ARCH.as_xlen() })),
         sie: uarch,
         stvec: uarch,
         scounteren: u32,
@@ -293,7 +293,7 @@ pub fn buildDataHart(comptime ARCH: Arch) type {
         mconfigptr: uarch,
 
         /// # Machine Trap Setup
-        mstatus: u64,
+        mstatus: u64 = @bitCast(std.mem.zeroInit(X64MSTATUS, .{ .UXL = ARCH.as_xlen(), .SXL = ARCH.as_xlen() })),
         misa: uarch,
         medeleg: uarch,
         mideleg: uarch,
@@ -329,7 +329,22 @@ pub fn buildDataHart(comptime ARCH: Arch) type {
 
         fn csr_store(self: *@This(), csr_addr: u12, value: uarch) !void {
             switch (csr_addr) {
-                CSRAddr.sstatus.to_u12() => self.sstatus = value,
+                CSRAddr.sstatus.to_u12() => {
+                    switch (self.xlen) {
+                        .X32 => self.sstatus = value,
+                        .X64 => {
+                            if (ARCH == .X32) unreachable;
+                            const sstatus = @as(*X64SSTATUS, @ptrCast(&self.mstatus));
+                            const v_sstatus = @as(X64SSTATUS, @bitCast(value));
+                            var UXL = sstatus.UXL;
+                            if (v_sstatus.UXL != 0 and v_sstatus.UXL != 3) {
+                                UXL = v_sstatus.UXL;
+                            }
+                            sstatus.* = v_sstatus;
+                            sstatus.UXL = UXL;
+                        },
+                    }
+                },
                 CSRAddr.sie.to_u12() => self.sie = value,
                 CSRAddr.stvec.to_u12() => self.stvec = value,
                 CSRAddr.scounteren.to_u12() => self.scounteren = @truncate(value),
@@ -389,7 +404,27 @@ pub fn buildDataHart(comptime ARCH: Arch) type {
                     self.stimecmp = (self.stimecmp & 0xffffffff) | (@as(u64, value) << 32);
                 },
 
-                CSRAddr.mstatus.to_u12() => self.mstatus = value,
+                CSRAddr.mstatus.to_u12() => {
+                    switch (self.xlen) {
+                        .X32 => self.mstatus = value,
+                        .X64 => {
+                            if (ARCH == .X32) unreachable;
+                            const mstatus = @as(*X64MSTATUS, @ptrCast(&self.mstatus));
+                            const v_mstatus = @as(X64MSTATUS, @bitCast(value));
+                            var UXL = mstatus.UXL;
+                            var SXL = mstatus.SXL;
+                            if (v_mstatus.UXL != 0 and v_mstatus.UXL != 3) {
+                                UXL = v_mstatus.UXL;
+                            }
+                            if (v_mstatus.SXL != 0 and v_mstatus.SXL != 3) {
+                                SXL = v_mstatus.SXL;
+                            }
+                            mstatus.* = v_mstatus;
+                            mstatus.UXL = UXL;
+                            mstatus.SXL = SXL;
+                        },
+                    }
+                },
                 CSRAddr.misa.to_u12() => self.misa = value,
                 CSRAddr.mideleg.to_u12() => self.mideleg = value,
                 CSRAddr.medeleg.to_u12() => self.medeleg = value,
@@ -556,20 +591,24 @@ pub fn CSRRW(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: typ
 
             const csr_addr: u12 = @bitCast(i.imm_11_0);
             const per = has_csr_permisions(hart_data.Zicsr.mode, csr_addr);
-            if (!(per.read() and per.write())) {
-                hart_data.illegal_instruction();
-                return;
-            }
+
+            const value = hart_data.I.regs[i.rs1];
 
             if (i.rd != 0) {
+                if (!per.read()) {
+                    hart_data.illegal_instruction();
+                    return;
+                }
                 hart_data.I.regs[i.rd] = hart_data.Zicsr.csr_load(csr_addr) catch {
                     hart_data.illegal_instruction();
                     return;
                 };
             }
 
-            const value = hart_data.I.regs[i.rs1];
-
+            if (!per.write()) {
+                hart_data.illegal_instruction();
+                return;
+            }
             hart_data.Zicsr.csr_store(csr_addr, value) catch {
                 hart_data.illegal_instruction();
                 return;
@@ -580,6 +619,7 @@ pub fn CSRRW(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: typ
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "CSRRW",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -620,11 +660,11 @@ pub fn CSRRS(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: typ
                     return;
                 };
 
+            const value = hart_data.I.regs[i.rs1];
+
             if (i.rd != 0) {
                 hart_data.I.regs[i.rd] = tmp;
             }
-
-            const value = hart_data.I.regs[i.rs1];
 
             if (value != 0) {
                 if (!per.write()) {
@@ -642,6 +682,7 @@ pub fn CSRRS(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: typ
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "CSRRS",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -671,7 +712,8 @@ pub fn CSRRC(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: typ
 
             const csr_addr: u12 = @bitCast(i.imm_11_0);
             const per = has_csr_permisions(hart_data.Zicsr.mode, csr_addr);
-            if (!(per.read() and per.write())) {
+
+            if (!per.read()) {
                 hart_data.illegal_instruction();
                 return;
             }
@@ -682,22 +724,30 @@ pub fn CSRRC(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: typ
                     return;
                 };
 
+            const value = hart_data.I.regs[i.rs1];
+
             if (i.rd != 0) {
                 hart_data.I.regs[i.rd] = tmp;
             }
 
-            const value = hart_data.I.regs[i.rs1];
+            if (value != 0) {
+                if (!per.write()) {
+                    hart_data.illegal_instruction();
+                    return;
+                }
 
-            hart_data.Zicsr.csr_store(csr_addr, tmp ^ (value & tmp)) catch {
-                hart_data.illegal_instruction();
-                return;
-            };
+                hart_data.Zicsr.csr_store(csr_addr, tmp ^ (value & tmp)) catch {
+                    hart_data.illegal_instruction();
+                    return;
+                };
+            }
 
             hart_data.I.pc += 4;
         }
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "CSRRC",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -727,12 +777,16 @@ pub fn CSRRWI(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: ty
 
             const csr_addr: u12 = @bitCast(i.imm_11_0);
             const per = has_csr_permisions(hart_data.Zicsr.mode, csr_addr);
-            if (!(per.read() and per.write())) {
+            if (!per.write()) {
                 hart_data.illegal_instruction();
                 return;
             }
 
             if (i.rd != 0) {
+                if (!per.read()) {
+                    hart_data.illegal_instruction();
+                    return;
+                }
                 hart_data.I.regs[i.rd] = hart_data.Zicsr.csr_load(csr_addr) catch {
                     hart_data.illegal_instruction();
                     return;
@@ -751,6 +805,7 @@ pub fn CSRRWI(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: ty
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "CSRRWI",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -813,6 +868,7 @@ pub fn CSRRSI(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: ty
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "CSRRSI",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -842,7 +898,7 @@ pub fn CSRRCI(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: ty
 
             const csr_addr: u12 = @bitCast(i.imm_11_0);
             const per = has_csr_permisions(hart_data.Zicsr.mode, csr_addr);
-            if (!(per.read() and per.write())) {
+            if (!per.read()) {
                 hart_data.illegal_instruction();
                 return;
             }
@@ -858,17 +914,23 @@ pub fn CSRRCI(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: ty
             }
 
             const value = i.rs1;
-
-            hart_data.Zicsr.csr_store(csr_addr, tmp ^ (value & tmp)) catch {
-                hart_data.illegal_instruction();
-                return;
-            };
+            if (value != 0) {
+                if (!per.write()) {
+                    hart_data.illegal_instruction();
+                    return;
+                }
+                hart_data.Zicsr.csr_store(csr_addr, tmp ^ (value & tmp)) catch {
+                    hart_data.illegal_instruction();
+                    return;
+                };
+            }
 
             hart_data.I.pc += 4;
         }
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "CSRRCI",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -950,6 +1012,7 @@ pub fn SRET(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: type
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SRET",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1026,6 +1089,7 @@ pub fn MRET(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: type
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "MRET",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1069,6 +1133,7 @@ pub fn MNRET(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: typ
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "MNRET",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1119,6 +1184,7 @@ pub fn WFI(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: type)
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "WFI",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1169,6 +1235,7 @@ pub fn SFENCE_VMA(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SFENCE_VMA",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };

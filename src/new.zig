@@ -62,6 +62,11 @@ const DataHart = struct {
 
     pub fn illegal_instruction(self: *@This()) void {
         std.debug.print("Illegal Instruction\n", .{});
+        std.debug.print("{}\n", .{self.Zicsr.mstatus});
+        std.debug.print("{}\n", .{self.Zicsr.mtvec});
+        std.debug.print("{}\n", .{self.Zicsr.mnstatus});
+        std.debug.print("{}\n", .{self.Zicsr.stvec});
+        std.debug.print("{}\n", .{self.Zicsr.satp});
         self.m_trap(CAUSE.IllegalInstruction);
     }
 

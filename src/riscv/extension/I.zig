@@ -20,8 +20,6 @@ pub fn buildDataHart(comptime ARCH: base.Arch) type {
 }
 
 pub fn LUI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: type) type {
-    const iarch = ARCH.iarch();
-
     return struct {
         fn check(instr_data: []const u8) bool {
             if (instr_data.len != 4) return false;
@@ -41,7 +39,13 @@ pub fn LUI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
             const u = x32_instr.u;
 
             if (u.rd != 0) {
-                hart_data.I.regs[u.rd] = @bitCast(@as(iarch, @as(i32, @bitCast(@as(u32, u.imm_31_12) << 12))));
+                switch (hart_data.Zicsr.xlen) {
+                    .X32 => hart_data.I.regs[u.rd] = @as(u32, @bitCast(@as(i32, @bitCast(@as(u32, u.imm_31_12) << 12)))),
+                    .X64 => {
+                        if (ARCH == .X32) unreachable;
+                        hart_data.I.regs[u.rd] = @as(u64, @bitCast(@as(i64, @as(i32, @bitCast(@as(u32, u.imm_31_12) << 12)))));
+                    },
+                }
             }
 
             hart_data.I.pc += 4;
@@ -49,6 +53,7 @@ pub fn LUI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "LUI",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -80,7 +85,13 @@ pub fn AUIPC(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
 
             const offset: uarch = @bitCast(@as(iarch, @as(i32, @bitCast(@as(u32, u.imm_31_12) << 12))));
             if (u.rd != 0) {
-                hart_data.I.regs[u.rd] = hart_data.I.pc +% offset;
+                switch (hart_data.Zicsr.xlen) {
+                    .X32 => hart_data.I.regs[u.rd] = @as(u32, @truncate(hart_data.I.pc)) +% @as(u32, @truncate(offset)),
+                    .X64 => {
+                        if (ARCH == .X32) unreachable;
+                        hart_data.I.regs[u.rd] = @as(u64, @truncate(hart_data.I.pc)) +% @as(u64, @truncate(offset));
+                    },
+                }
             }
 
             hart_data.I.pc += 4;
@@ -88,6 +99,7 @@ pub fn AUIPC(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "AUIPC",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -96,9 +108,6 @@ pub fn AUIPC(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
 }
 
 pub fn JAL(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: type) type {
-    const uarch = ARCH.uarch();
-    const iarch = ARCH.iarch();
-
     return struct {
         fn check(instr_data: []const u8) bool {
             if (instr_data.len != 4) return false;
@@ -118,7 +127,14 @@ pub fn JAL(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
             const jimm = x32_instr.jimm;
 
             const pc = hart_data.I.pc + 4;
-            hart_data.I.pc = @as(uarch, @bitCast(@as(iarch, @bitCast(hart_data.I.pc)) + (@as(iarch, @as(i21, @bitCast(rearrange(u20, u21, jimm.imm, &base.@"imm_20|10:1|11|19:12")))))));
+
+            switch (hart_data.Zicsr.xlen) {
+                .X32 => hart_data.I.pc = @as(u32, @bitCast(@as(i32, @bitCast(@as(u32, @truncate(hart_data.I.pc)))) +% (@as(i32, @as(i21, @bitCast(rearrange(u20, u21, jimm.imm, &base.@"imm_20|10:1|11|19:12"))))))),
+                .X64 => {
+                    if (ARCH == .X32) unreachable;
+                    hart_data.I.pc = @as(u64, @bitCast(@as(i64, @bitCast(@as(u64, @truncate(hart_data.I.pc)))) +% (@as(i64, @as(i21, @bitCast(rearrange(u20, u21, jimm.imm, &base.@"imm_20|10:1|11|19:12")))))));
+                },
+            }
 
             if (pc - 4 == hart_data.I.pc) {
                 hart_data.illegal_instruction();
@@ -132,6 +148,7 @@ pub fn JAL(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "JAL",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -140,9 +157,6 @@ pub fn JAL(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 }
 
 pub fn JALR(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: type) type {
-    const uarch = ARCH.uarch();
-    const iarch = ARCH.iarch();
-
     return struct {
         fn check(instr_data: []const u8) bool {
             if (instr_data.len != 4) return false;
@@ -163,7 +177,13 @@ pub fn JALR(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
             const i = x32_instr.i;
 
             const pc = hart_data.I.pc + 4;
-            hart_data.I.pc = @as(uarch, @bitCast(@as(iarch, @bitCast(hart_data.I.regs[i.rs1])) + (@as(iarch, @as(i12, @bitCast(i.imm_11_0))))));
+            switch (hart_data.Zicsr.xlen) {
+                .X32 => hart_data.I.pc = @as(u32, @bitCast(@as(i32, @bitCast(@as(u32, @truncate(hart_data.I.regs[i.rs1])))) +% (@as(i32, @as(i12, @bitCast(i.imm_11_0)))))),
+                .X64 => {
+                    if (ARCH == .X32) unreachable;
+                    hart_data.I.pc = @as(u64, @bitCast(@as(i64, @bitCast(@as(u64, @truncate(hart_data.I.regs[i.rs1])))) +% (@as(i64, @as(i12, @bitCast(i.imm_11_0))))));
+                },
+            }
             hart_data.I.pc ^= hart_data.I.pc & 1;
             if (i.rd != 0) {
                 hart_data.I.regs[i.rd] = pc;
@@ -172,6 +192,7 @@ pub fn JALR(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "JALR",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -180,9 +201,6 @@ pub fn JALR(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 }
 
 pub fn BEQ(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: type) type {
-    const uarch = ARCH.uarch();
-    const iarch = ARCH.iarch();
-
     return struct {
         fn check(instr_data: []const u8) bool {
             if (instr_data.len != 4) return false;
@@ -201,9 +219,20 @@ pub fn BEQ(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
             debug.assert(instr_data.len == 4);
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
             const b = x32_instr.b;
-            if (hart_data.I.regs[b.rs1] == hart_data.I.regs[b.rs2]) {
-                hart_data.I.pc = @as(uarch, @bitCast(@as(iarch, @bitCast(hart_data.I.pc)) + b.get_imm()));
-                return;
+            switch (hart_data.Zicsr.xlen) {
+                .X32 => {
+                    if (@as(u32, @truncate(hart_data.I.regs[b.rs1])) == @as(u32, @truncate(hart_data.I.regs[b.rs2]))) {
+                        hart_data.I.pc = @as(u32, @bitCast(@as(i32, @bitCast(@as(u32, @truncate(hart_data.I.pc)))) + b.get_imm()));
+                        return;
+                    }
+                },
+                .X64 => {
+                    if (ARCH == .X32) unreachable;
+                    if (@as(u64, @truncate(hart_data.I.regs[b.rs1])) == @as(u64, @truncate(hart_data.I.regs[b.rs2]))) {
+                        hart_data.I.pc = @as(u64, @bitCast(@as(i64, @bitCast(@as(u64, @truncate(hart_data.I.pc)))) + b.get_imm()));
+                        return;
+                    }
+                },
             }
 
             hart_data.I.pc += 4;
@@ -211,6 +240,7 @@ pub fn BEQ(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "BEQ",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -250,6 +280,7 @@ pub fn BNE(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "BNE",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -289,6 +320,7 @@ pub fn BLT(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "BLT",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -328,6 +360,7 @@ pub fn BGE(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "BGE",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -366,6 +399,7 @@ pub fn BLTU(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "BLTU",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -405,6 +439,7 @@ pub fn BGEU(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "BGEU",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -445,6 +480,7 @@ pub fn LB(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: t
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "LB",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -484,6 +520,7 @@ pub fn LH(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: t
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "LH",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -523,6 +560,7 @@ pub fn LW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: t
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "LW",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -562,6 +600,7 @@ pub fn LBU(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "LBU",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -601,6 +640,7 @@ pub fn LHU(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "LHU",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -639,6 +679,7 @@ pub fn SB(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: t
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SB",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -677,6 +718,7 @@ pub fn SH(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: t
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SH",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -715,6 +757,7 @@ pub fn SW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: t
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SW",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -723,9 +766,6 @@ pub fn SW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: t
 }
 
 pub fn ADDI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: type) type {
-    const uarch = ARCH.uarch();
-    const iarch = ARCH.iarch();
-
     return struct {
         fn check(instr_data: []const u8) bool {
             if (instr_data.len != 4) return false;
@@ -746,7 +786,15 @@ pub fn ADDI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
             const i = x32_instr.i;
 
             if (i.rd != 0) {
-                hart_data.I.regs[i.rd] = hart_data.I.regs[i.rs1] +% @as(uarch, @bitCast(@as(iarch, i.imm_11_0)));
+                switch (hart_data.Zicsr.xlen) {
+                    .X32 => {
+                        hart_data.I.regs[i.rd] = @as(u32, @truncate(hart_data.I.regs[i.rs1])) +% @as(u32, @bitCast(@as(i32, i.imm_11_0)));
+                    },
+                    .X64 => {
+                        if (ARCH == .X32) unreachable;
+                        hart_data.I.regs[i.rd] = @as(u64, @truncate(hart_data.I.regs[i.rs1])) +% @as(u64, @bitCast(@as(i64, i.imm_11_0)));
+                    },
+                }
             }
 
             hart_data.I.pc += 4;
@@ -754,6 +802,7 @@ pub fn ADDI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "ADDI",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -792,6 +841,7 @@ pub fn SLTI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SLTI",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -831,6 +881,7 @@ pub fn SLTIU(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SLTIU",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -870,6 +921,7 @@ pub fn XORI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "XORI",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -909,6 +961,7 @@ pub fn ORI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "ORI",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -948,6 +1001,7 @@ pub fn ANDI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "ANDI",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -980,7 +1034,13 @@ pub fn SLLI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
             const i_1 = x32_instr.i_1;
 
             if (i_1.rd != 0) {
-                hart_data.I.regs[i_1.rd] = hart_data.I.regs[i_1.rs1] << @truncate(i_1.shamt);
+                switch (hart_data.Zicsr.xlen) {
+                    .X32 => hart_data.I.regs[i_1.rd] = hart_data.I.regs[i_1.rs1] << @truncate(i_1.shamt),
+                    .X64 => {
+                        if (ARCH == .X32) unreachable;
+                        hart_data.I.regs[i_1.rd] = hart_data.I.regs[i_1.rs1] << i_1.shamt;
+                    },
+                }
             }
 
             hart_data.I.pc += 4;
@@ -988,6 +1048,7 @@ pub fn SLLI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SLLI",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1028,6 +1089,7 @@ pub fn SRLI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SRLI",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1077,6 +1139,7 @@ pub fn SRAI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SRAI",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1106,7 +1169,7 @@ pub fn ADD(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
             const r = x32_instr.r;
 
             if (r.rd != 0) {
-                hart_data.I.regs[r.rd] = hart_data.I.regs[r.rs1] +% hart_data.I.regs[r.rs2];
+                hart_data.I.regs[r.rd] = ARCH.to_add(hart_data.Zicsr.xlen, hart_data.I.regs[r.rs1], hart_data.I.regs[r.rs2]);
             }
 
             hart_data.I.pc += 4;
@@ -1114,6 +1177,7 @@ pub fn ADD(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "ADD",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1151,6 +1215,7 @@ pub fn SUB(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SUB",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1188,6 +1253,7 @@ pub fn SLL(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SLL",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1227,6 +1293,7 @@ pub fn SLT(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SLT",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1264,6 +1331,7 @@ pub fn SLTU(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SLTU",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1301,6 +1369,7 @@ pub fn XOR(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "XOR",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1338,6 +1407,7 @@ pub fn SRL(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SRL",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1386,6 +1456,7 @@ pub fn SRA(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SRA",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1423,6 +1494,7 @@ pub fn OR(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: t
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "OR",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1460,6 +1532,7 @@ pub fn AND(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "AND",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1488,6 +1561,7 @@ pub fn FENCE(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "FENCE",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1520,6 +1594,7 @@ pub fn ECALL(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "ECALL",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1552,6 +1627,7 @@ pub fn EBREAK(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHar
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "EBREAK",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1592,6 +1668,7 @@ pub fn LWU(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "LWU",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1633,6 +1710,7 @@ pub fn LD(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: t
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "LD",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1673,6 +1751,7 @@ pub fn SD(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: t
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SD",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1705,7 +1784,7 @@ pub fn ADDIW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
             const i = x32_instr.i;
 
             if (i.rd != 0) {
-                hart_data.I.regs[i.rd] = @bitCast(@as(iarch, @as(i32, @truncate(@as(isize, @bitCast(hart_data.I.regs[i.rs1])))) +% @as(i32, i.imm_11_0)));
+                hart_data.I.regs[i.rd] = @bitCast(@as(iarch, @as(i32, @truncate(@as(iarch, @bitCast(hart_data.I.regs[i.rs1])))) +% @as(i32, i.imm_11_0)));
             }
 
             hart_data.I.pc += 4;
@@ -1713,6 +1792,7 @@ pub fn ADDIW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "ADDIW",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1757,6 +1837,7 @@ pub fn SLLIW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SLLIW",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1801,6 +1882,7 @@ pub fn SRLIW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SRLIW",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1855,6 +1937,7 @@ pub fn SRAIW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SRAIW",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1896,6 +1979,7 @@ pub fn ADDW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "ADDW",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1937,6 +2021,7 @@ pub fn SUBW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SUBW",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -1979,6 +2064,7 @@ pub fn SLLW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SLLW",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -2021,6 +2107,7 @@ pub fn SRLW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SRLW",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };
@@ -2075,6 +2162,7 @@ pub fn SRAW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "SRAW",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };

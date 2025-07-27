@@ -108,19 +108,14 @@ pub fn build(comptime ARCH: Arch) type {
             pub fn read(self: *@This(), eei_data: *DataEEI, index: u64, buffer: []u8) bool {
                 switch (self.Zicsr.xlen) {
                     .X32 => {
-                        const stvec = @as(Zicsr.X32TVEC, @bitCast(@as(u32, @truncate(self.Zicsr.stvec))));
                         const satp = @as(Zicsr.X32SATP, @bitCast(@as(u32, @truncate(self.Zicsr.satp))));
                         switch (self.Zicsr.mode) {
                             .M => eei_data.mmio_read(index, buffer),
                             .S => {
-                                std.debug.print("{}\n", .{stvec});
-                                std.debug.print("{}\n", .{self.Zicsr.mideleg});
                                 if (satp.MODE == 0) {
                                     eei_data.mmio_read(index, buffer);
                                     return true;
                                 }
-
-                                std.debug.print("{}\n", .{satp});
                                 @panic("Supervisor");
                             },
                             .U => {
@@ -135,19 +130,15 @@ pub fn build(comptime ARCH: Arch) type {
                     },
                     .X64 => {
                         if (ARCH == .X32) unreachable;
-                        const stvec = @as(Zicsr.X64TVEC, @bitCast(@as(u64, @truncate(self.Zicsr.stvec))));
                         const satp = @as(Zicsr.X64SATP, @bitCast(@as(u64, @truncate(self.Zicsr.satp))));
                         switch (self.Zicsr.mode) {
                             .M => eei_data.mmio_read(index, buffer),
                             .S => {
-                                std.debug.print("{}\n", .{stvec});
-                                std.debug.print("{}\n", .{self.Zicsr.mideleg});
                                 if (satp.MODE == 0) {
                                     eei_data.mmio_read(index, buffer);
                                     return true;
                                 }
 
-                                std.debug.print("{}\n", .{satp});
                                 @panic("Supervisor");
                             },
                             .U => {
@@ -305,7 +296,7 @@ pub fn build(comptime ARCH: Arch) type {
         pub fn init(allocator: Allocator, program_path: []const u8) !@This() {
             const cpu = try allocator.create(EEI);
             errdefer allocator.destroy(cpu);
-            cpu.* = EEI.init(allocator, std.mem.zeroes(DataHart));
+            cpu.* = EEI.init(allocator, std.mem.zeroInit(DataHart, .{}));
             errdefer cpu.deinit();
 
             const memory = try allocator.alloc(u8, 1024 * 1000 * 2); // 2MB

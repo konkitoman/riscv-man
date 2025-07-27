@@ -32,6 +32,7 @@ pub fn FENCE_I(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHa
 
         pub fn instr() Instruction(ARCH, DataEEI, DataHart) {
             return .{
+                .name = "FENCE_I",
                 .check = &@This().check,
                 .execute = &@This().execute,
             };

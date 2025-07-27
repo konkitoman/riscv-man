@@ -105,6 +105,33 @@ pub const Arch = enum {
     pub fn bytes(self: @This()) u16 {
         return @typeInfo(self.uarch()).int.bits;
     }
+
+    pub fn as_xlen(self: @This()) u4 {
+        return switch (self) {
+            .X32 => 1,
+            .X64 => 2,
+        };
+    }
+
+    pub fn to_add(comptime self: @This(), other: @This(), left: self.uarch(), right: self.uarch()) self.uarch() {
+        switch (other) {
+            .X32 => return @as(u32, @truncate(left)) +% @as(u32, @truncate(right)),
+            .X64 => {
+                if (self == .X32) unreachable;
+                return @as(u64, @truncate(left)) +% @as(u64, @truncate(right));
+            },
+        }
+    }
+
+    pub fn to_addi(comptime self: @This(), other: @This(), left: self.iarch(), right: self.iarch()) self.uarch() {
+        switch (other) {
+            .X32 => return @as(u32, @truncate(left)) +% @as(u32, @truncate(right)),
+            .X64 => {
+                if (self == .X32) unreachable;
+                return @as(u64, @truncate(left)) +% @as(u64, @truncate(right));
+            },
+        }
+    }
 };
 
 inline fn BIT(FROM: type, TO: type, from: FROM, fi: comptime_int, ti: comptime_int) TO {
@@ -951,6 +978,7 @@ pub fn Instruction(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHar
     _ = ARCH;
 
     return struct {
+        name: []const u8,
         check: *const fn (instr_data: []const u8) bool,
         execute: *const fn (eei_data: *DataEEI, hart_data: *DataHart, instr_data: []const u8) void,
     };
