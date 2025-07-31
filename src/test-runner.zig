@@ -180,8 +180,7 @@ pub fn build(comptime ARCH: Arch) type {
             pub fn ebreak(self: *@This(), eei_data: *DataEEI) void {
                 _ = eei_data;
 
-                std.debug.print("EBREAK not implemented\n", .{});
-                self.I.pc += 4;
+                self.trap(CAUSE.Breakpoint);
             }
 
             pub fn illegal_instruction(self: *@This()) void {
@@ -189,22 +188,19 @@ pub fn build(comptime ARCH: Arch) type {
                 self.m_trap(CAUSE.IllegalInstruction);
             }
 
-            fn trap(self: *@This(), cause: CAUSE) bool {
+            fn trap(self: *@This(), cause: CAUSE) void {
                 if (cause.interrupt == 1) @panic("Interrupt not implemented");
 
-                switch (self.mode) {
+                switch (self.Zicsr.mode) {
                     .U, .S => {
-                        if (self.Zicsr.medeleg >> @truncate(cause.code) & 1 == 1) {
+                        if ((self.Zicsr.medeleg >> @truncate(cause.code)) & 1 == 1) {
                             self.s_trap(cause);
-                            return true;
                         } else {
                             self.m_trap(cause);
-                            return true;
                         }
                     },
                     .M => {
                         self.m_trap(cause);
-                        return true;
                     },
                     .H => {
                         @panic("Not implemented");
@@ -262,22 +258,50 @@ pub fn build(comptime ARCH: Arch) type {
             }
 
             fn s_trap(self: *@This(), cause: CAUSE) void {
-                self.Zicsr.sstatus.SPP = @truncate(self.Zicsr.mode.to_u2());
-                self.Zicsr.mode = .S;
-                self.Zicsr.sepc = self.I.pc;
-                self.Zicsr.scause = cause;
-                const tvec = self.Zicsr.stvec;
-                switch (tvec.mode) {
-                    0 => { // DIRECT
-                        self.I.pc = @as(uarch, tvec.base) << 2;
+                self.Zicsr.xlen = ARCH;
+
+                switch (ARCH) {
+                    .X32 => {
+                        const sstatus = @as(*Zicsr.X32SSTATUS, @ptrCast(&self.Zicsr.sstatus));
+                        sstatus.SPP = @truncate(self.Zicsr.mode.to_u2());
+                        self.Zicsr.mode = .S;
+                        self.Zicsr.sepc = self.I.pc;
+                        self.Zicsr.scause = cause;
+                        const tvec = @as(Zicsr.X32TVEC, @bitCast(self.Zicsr.stvec));
+                        switch (tvec.mode) {
+                            0 => { // DIRECT
+                                self.I.pc = @as(uarch, tvec.base) << 2;
+                            },
+                            1 => { // VECTORED
+                                // TODO: Implement VECTORED
+                                @panic("VECTORED not implemented!");
+                                // self.I.pc = (@as(uarch, tvec.base) << 2) +% (@as(uarch, cause.code) * 4);
+                            },
+                            else => {
+                                @panic("Unknown MTVEC Mode!");
+                            },
+                        }
                     },
-                    1 => { // VECTORED
-                        // TODO: Implement VECTORED
-                        @panic("VECTORED not implemented!");
-                        // self.pc = (mtvec ^ (mtvec & 0b11)) + (4 * (cause & 0xffffffff));
-                    },
-                    else => {
-                        @panic("Unknown MTVEC Mode!");
+                    .X64 => {
+                        const sstatus = @as(*Zicsr.X64SSTATUS, @ptrCast(&self.Zicsr.sstatus));
+                        sstatus.SPP = @truncate(self.Zicsr.mode.to_u2());
+                        self.Zicsr.mode = .S;
+                        self.Zicsr.sepc = self.I.pc;
+                        self.Zicsr.scause = cause;
+                        const tvec = @as(Zicsr.X64TVEC, @bitCast(self.Zicsr.stvec));
+                        switch (tvec.mode) {
+                            0 => { // DIRECT
+                                self.I.pc = @as(uarch, tvec.base) << 2;
+                            },
+                            1 => { // VECTORED
+                                // TODO: Implement VECTORED
+                                @panic("VECTORED not implemented!");
+                                // self.I.pc = (@as(uarch, tvec.base) << 2) +% (@as(uarch, cause.code) * 4);
+                            },
+                            else => {
+                                @panic("Unknown STVEC Mode!");
+                            },
+                        }
                     },
                 }
             }

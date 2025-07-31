@@ -275,7 +275,7 @@ pub fn buildDataHart(comptime ARCH: Arch) type {
         /// # Supervisor Trap Handling
         sscratch: uarch,
         sepc: uarch,
-        scause: uarch,
+        scause: CAUSE,
         stval: uarch,
         sip: uarch,
         // scountovf
@@ -294,7 +294,10 @@ pub fn buildDataHart(comptime ARCH: Arch) type {
 
         /// # Machine Trap Setup
         mstatus: u64 = @bitCast(std.mem.zeroInit(X64MSTATUS, .{ .UXL = ARCH.as_xlen(), .SXL = ARCH.as_xlen() })),
-        misa: uarch,
+        misa: uarch = switch (ARCH) {
+            .X32 => 1 << 30,
+            .X64 => 2 << 62,
+        },
         medeleg: uarch,
         mideleg: uarch,
         mie: uarch,
@@ -334,7 +337,7 @@ pub fn buildDataHart(comptime ARCH: Arch) type {
                         .X32 => self.sstatus = value,
                         .X64 => {
                             if (ARCH == .X32) unreachable;
-                            const sstatus = @as(*X64SSTATUS, @ptrCast(&self.mstatus));
+                            const sstatus = @as(*X64SSTATUS, @ptrCast(&self.sstatus));
                             const v_sstatus = @as(X64SSTATUS, @bitCast(value));
                             var UXL = sstatus.UXL;
                             if (v_sstatus.UXL != 0 and v_sstatus.UXL != 3) {
@@ -351,7 +354,7 @@ pub fn buildDataHart(comptime ARCH: Arch) type {
 
                 CSRAddr.sscratch.to_u12() => self.sscratch = value,
                 CSRAddr.sepc.to_u12() => self.sepc = value,
-                CSRAddr.scause.to_u12() => self.scause = value,
+                CSRAddr.scause.to_u12() => self.scause = @bitCast(value),
                 CSRAddr.stval.to_u12() => self.stval = value,
                 CSRAddr.sip.to_u12() => self.sip = value,
 
@@ -498,7 +501,7 @@ pub fn buildDataHart(comptime ARCH: Arch) type {
 
                 CSRAddr.sscratch.to_u12() => return self.sscratch,
                 CSRAddr.sepc.to_u12() => return self.sepc,
-                CSRAddr.scause.to_u12() => return self.scause,
+                CSRAddr.scause.to_u12() => return @bitCast(self.scause),
                 CSRAddr.stval.to_u12() => return self.stval,
                 CSRAddr.sip.to_u12() => return self.sip,
 
