@@ -71,14 +71,19 @@ pub fn buildEEI(comptime ARCH: base.Arch, comptime harts: usize, DataHart: type,
             data: DataHart,
 
             pub fn step(self: *@This(), eei_data: *DataEEI) void {
-                var instr_data: [4]u8 = undefined;
+                var buffer: [4]u8 = undefined;
 
-                if (!self.data.read(eei_data, self.data.I.pc, &instr_data)) return;
+                if (!self.data.read(eei_data, self.data.I.pc, &buffer)) return;
+
+                var instr_data: []const u8 = &buffer;
+                if (buffer[0] & 0b11 != 0b11) {
+                    instr_data = buffer[0..2];
+                }
 
                 var run_with: ?usize = null;
 
                 for (0..instructions.len) |i| {
-                    if (instructions[i].check(&instr_data)) {
+                    if (instructions[i].check(instr_data)) {
                         if (run_with) |_| {
                             @panic("Instruction collision");
                         }
@@ -87,7 +92,7 @@ pub fn buildEEI(comptime ARCH: base.Arch, comptime harts: usize, DataHart: type,
                 }
 
                 if (run_with) |i| {
-                    instructions[i].execute(eei_data, &self.data, &instr_data);
+                    instructions[i].execute(eei_data, &self.data, instr_data);
                 } else {
                     self.data.illegal_instruction();
                 }

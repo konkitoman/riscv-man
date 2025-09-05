@@ -1270,22 +1270,25 @@ pub const RV64C = union(enum) {
 
                 return switch (i.opcode) {
                     0b00 => switch (i.cl.funct3) {
-                        0b001 => .{ .C_LD = .{ .uimm = (s(u5, i.cl.imm1) << 3) + s(u5, i.cl.imm2), .rs1 = PIRf(i.cl.prs1), .rd = PIRf(i.cl.prd) } },
-                        0b011 => .{ .C_FLD = .{ .uimm = (s(u5, i.cl.imm1) << 3) + s(u5, i.cl.imm2), .rs1 = PIRf(i.cl.prs1), .rd = PIRf(i.cl.prd) } },
+                        0b001 => .{ .C_FLD = .{ .uimm = (s(u5, i.cl.imm1) << 3) + s(u5, i.cl.imm2), .rs1 = PIRf(i.cl.prs1), .rd = PIRf(i.cl.prd) } },
+                        0b011 => .{ .C_LD = .{ .uimm = (s(u5, i.cl.imm1) << 3) + s(u5, i.cl.imm2), .rs1 = PIRf(i.cl.prs1), .rd = PIRf(i.cl.prd) } },
                         0b111 => .{ .C_SD = .{ .uimm = (s(u5, i.cs.imm2) << 2) | s(u5, i.cs.imm1), .rs2 = PIRf(i.cs.prs2), .rs1 = PIRf(i.cs.prs1) } },
                         else => null,
                     },
                     0b01 => switch (i.ca.funct3) {
                         0b001 => Self{ .C_ADDIW = .{ .imm = cast(i6, (s(u6, i.ci.imm_12) << 5) + s(u6, i.ci.imm_2_6)), .rd = IRf(i.ci.rd) } },
-                        0b100 => switch (i.ci.imm_12) {
-                            0 => switch (t(u2, i.cb.funct3 >> 2)) {
-                                else => null,
+                        0b100 => switch (i.cl.imm2 & 0b11) {
+                            0b11 => switch (i.ci.imm_12) {
+                                0 => switch (t(u2, i.cb.funct3 >> 2)) {
+                                    else => null,
+                                },
+                                1 => switch (i.ca.funct2) {
+                                    0b00 => .{ .C_SUBW = .{ .rd = PIRf(i.ca.prd), .rs2 = PIRf(i.ca.prs2) } },
+                                    0b01 => .{ .C_ADDW = .{ .rd = PIRf(i.ca.prd), .rs2 = PIRf(i.ca.prs2) } },
+                                    else => null,
+                                },
                             },
-                            1 => switch (i.ca.funct2) {
-                                0b00 => .{ .C_SUBW = .{ .rd = PIRf(i.ca.prd), .rs2 = PIRf(i.ca.prs2) } },
-                                0b01 => .{ .C_ADDW = .{ .rd = PIRf(i.ca.prd), .rs2 = PIRf(i.ca.prs2) } },
-                                else => null,
-                            },
+                            else => null,
                         },
                         else => null,
                     },

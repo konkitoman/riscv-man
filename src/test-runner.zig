@@ -7,6 +7,7 @@ const Allocator = std.mem.Allocator;
 const IOMemory = @import("io/memory.zig");
 
 const I = @import("riscv/extension/I.zig");
+const C = @import("riscv/extension/C.zig");
 const Zifencei = @import("riscv/extension/Zifencei.zig");
 const Zicsr = @import("riscv/extension/Zicsr.zig");
 
@@ -102,6 +103,7 @@ pub fn build(comptime ARCH: Arch) type {
 
             I: I.buildDataHart(ARCH),
             Zicsr: Zicsr.buildDataHart(ARCH),
+            C: C.buildDataHart(ARCH),
 
             const CAUSE = Zicsr.buildDataHart(ARCH).CAUSE;
 
@@ -307,7 +309,7 @@ pub fn build(comptime ARCH: Arch) type {
             }
         };
 
-        const INSTRS = I.buildInstrs(ARCH, DataEEI, DataHart) ++ Zifencei.buildInstrs(ARCH, DataEEI, DataHart) ++ Zicsr.buildInstrs(ARCH, DataEEI, DataHart);
+        const INSTRS = I.buildInstrs(ARCH, DataEEI, DataHart) ++ Zifencei.buildInstrs(ARCH, DataEEI, DataHart) ++ Zicsr.buildInstrs(ARCH, DataEEI, DataHart) ++ C.buildInstrs(ARCH, DataEEI, DataHart);
         const EEI = default_EEI.buildEEI(ARCH, 1, DataHart, &INSTRS);
         const ELF = elf.build(EEI);
 
@@ -414,7 +416,7 @@ pub fn build(comptime ARCH: Arch) type {
             var old_values = std.mem.zeroes([4]ARCH.uarch());
             std.debug.assert(self.cpu.harts[0].data.read(&self.cpu.data, self.cpu.harts[0].data.I.pc, &self.memory));
             const instr = try ASM.from_memory(&self.memory);
-            print("{s}: 0x{x} ", .{ self.cpu.harts[0].data.Zicsr.mode.name(), self.cpu.harts[0].data.I.pc });
+            print("{s}: {x} ", .{ self.cpu.harts[0].data.Zicsr.mode.name(), self.cpu.harts[0].data.I.pc });
             try instr.write(std.io.getStdErr().writer().any());
             for (0..instr.used_grs().len) |i| {
                 old_values[i] = self.cpu.harts[0].data.I.regs[instr.used_grs()[i].to_u5()];
