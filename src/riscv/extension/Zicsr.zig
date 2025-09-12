@@ -224,10 +224,10 @@ fn buildCause(ARCH: Arch) type {
         pub const ECallFromS = @This(){ .interrupt = 0, .code = 9 };
 
         pub const ECallFromM = @This(){ .interrupt = 0, .code = 11 };
-        pub const InstructionPageFault = @This(){ .interrupt = 0, .code = 12 };
+        pub const FetchPageFault = @This(){ .interrupt = 0, .code = 12 };
         pub const LoadPageFault = @This(){ .interrupt = 0, .code = 13 };
 
-        pub const Store_AMOPageFault = @This(){ .interrupt = 0, .code = 15 };
+        pub const StorePageFault = @This(){ .interrupt = 0, .code = 15 };
     };
 }
 
@@ -362,27 +362,17 @@ pub fn buildDataHart(comptime ARCH: Arch) type {
                     .X32 => {
                         self.satp = @truncate(value);
                         const mstatus = @as(X32MSTATUS, @bitCast(@as(u32, @truncate(self.mstatus))));
-                        const satp = @as(X32SATP, @bitCast(@as(u32, @truncate(self.satp))));
-                        std.debug.print("SATP: {}\n", .{satp});
 
                         if (mstatus.TVM == 1) {
                             return error.TVM_IS_ON;
-                        }
-
-                        switch (satp.MODE) {
-                            0 => {}, // Bare
-                            1 => { // Sv32
-                                const root = @as(uarch, satp.PPN) * std.math.pow(uarch, 2, 10) * 4;
-                                std.debug.print("Root: 0x{x}\n", .{root});
-                            },
                         }
                     },
                     .X64 => {
                         if (ARCH == .X32) unreachable;
+                        const old_satp = self.satp;
                         self.satp = @truncate(value);
                         const mstatus = @as(X64MSTATUS, @bitCast(@as(u64, @truncate(self.mstatus))));
                         const satp = @as(X64SATP, @bitCast(@as(u64, @truncate(self.satp))));
-                        std.debug.print("SATP: {}\n", .{satp});
 
                         if (mstatus.TVM == 1) {
                             return error.TVM_IS_ON;
@@ -390,8 +380,12 @@ pub fn buildDataHart(comptime ARCH: Arch) type {
 
                         switch (satp.MODE) {
                             0 => {}, // Bare
+                            // 8 => { // Sv39
+
+                            // },
                             else => {
-                                @panic("Not implemented");
+                                debug.print("fixme:unimplemented SATP MODE: {}", .{satp.MODE});
+                                self.satp = old_satp;
                             },
                         }
                     },
@@ -975,6 +969,10 @@ pub fn SRET(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: type
                     }
 
                     hart_data.I.pc = hart_data.Zicsr.sepc;
+                    if (hart_data.Zicsr.mode == .M) {
+                        const mstatus = @as(*X32MSTATUS, @ptrCast(&hart_data.Zicsr.mstatus));
+                        mstatus.MPRV = 0;
+                    }
                     const sstatus = @as(*X32SSTATUS, @ptrCast(&hart_data.Zicsr.sstatus));
                     sstatus.SIE = sstatus.SPIE;
                     if (sstatus.SPP == 0) {
@@ -992,6 +990,8 @@ pub fn SRET(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: type
                     }
 
                     hart_data.I.pc = hart_data.Zicsr.sepc;
+                    const mstatus = @as(*X64MSTATUS, @ptrCast(&hart_data.Zicsr.mstatus));
+                    mstatus.MPRV = 0;
                     const sstatus = @as(*X64SSTATUS, @ptrCast(&hart_data.Zicsr.sstatus));
                     sstatus.SIE = sstatus.SPIE;
                     if (sstatus.SPP == 0) {
@@ -1054,6 +1054,7 @@ pub fn MRET(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: type
                     hart_data.I.pc = @as(u32, @truncate(hart_data.Zicsr.mepc));
                     const mstatus = @as(*X32MSTATUS, @ptrCast(&hart_data.Zicsr.mstatus));
                     const mstatush = @as(*X32MSTATUSH, @ptrCast(@as(*[2]u32, @ptrCast(&hart_data.Zicsr.mstatus))[1..2]));
+                    mstatus.MPRV = 0;
                     mstatus.MIE = mstatus.MPIE;
                     mstatush.MDT = 0;
                     hart_data.Zicsr.mode = HartMode.from_u2(mstatus.MPP);
@@ -1064,6 +1065,7 @@ pub fn MRET(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: type
                     if (ARCH == .X32) unreachable;
                     hart_data.I.pc = @as(u64, @truncate(hart_data.Zicsr.mepc));
                     const mstatus = @as(*X64MSTATUS, @ptrCast(&hart_data.Zicsr.mstatus));
+                    mstatus.MPRV = 0;
                     mstatus.MIE = mstatus.MPIE;
                     mstatus.MDT = 0;
                     hart_data.Zicsr.mode = HartMode.from_u2(mstatus.MPP);

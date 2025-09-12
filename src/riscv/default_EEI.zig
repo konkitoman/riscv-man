@@ -70,13 +70,11 @@ pub fn buildEEI(comptime ARCH: base.Arch, comptime harts: usize, DataHart: type,
         pub const Hart = struct {
             data: DataHart,
 
-            pub fn step(self: *@This(), eei_data: *DataEEI) void {
-                var buffer: [4]u8 = undefined;
-
-                if (!self.data.read(eei_data, self.data.I.pc, &buffer)) return;
-
-                var instr_data: []const u8 = &buffer;
-                if (buffer[0] & 0b11 != 0b11) {
+            pub fn step(self: *@This(), eei_data: *DataEEI, buffer: []u8) void {
+                var instr_data: []const u8 = buffer;
+                if (buffer[0] & 0b11 == 0b11) {
+                    instr_data = buffer[0..4];
+                } else {
                     instr_data = buffer[0..2];
                 }
 
