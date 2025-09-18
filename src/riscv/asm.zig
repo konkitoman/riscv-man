@@ -212,7 +212,7 @@ pub const RV32I = union(enum) {
         return 4;
     }
 
-    pub fn write(self: Self, writer: std.io.AnyWriter) !void {
+    pub fn write(self: Self, writer: *std.Io.Writer) !void {
         return switch (self) {
             .LUI => |i| writer.print("LUI {s}, 0x{x}\n", .{ i.rd.name(), i.imm }),
             .AUIPC => |i| writer.print("AUIPC {s}, 0x{x}\n", .{ i.rd.name(), i.imm }),
@@ -527,7 +527,7 @@ pub const RV64I = union(enum) {
         };
     }
 
-    pub fn write(self: Self, writer: std.io.AnyWriter) !void {
+    pub fn write(self: Self, writer: *std.Io.Writer) !void {
         return switch (self) {
             .LWU => |i| writer.print("LWU {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), @as(u12, @bitCast(i.offset)) }),
             .LD => |i| writer.print("LD {s}, {s}, 0x{x}\n", .{ i.rd.name(), i.rs1.name(), @as(u12, @bitCast(i.offset)) }),
@@ -642,7 +642,7 @@ pub const RV32M = union(enum) {
         return 4;
     }
 
-    pub fn write(self: Self, writer: std.io.AnyWriter) !void {
+    pub fn write(self: Self, writer: *std.Io.Writer) !void {
         return switch (self) {
             .MUL => |i| writer.print("MUL {s}, {s}, {s}\n", .{ i.rd.name(), i.rs1.name(), i.rs2.name() }),
             .MULH => |i| writer.print("MULH {s}, {s}, {s}\n", .{ i.rd.name(), i.rs1.name(), i.rs2.name() }),
@@ -716,7 +716,7 @@ pub const RV64M = union(enum) {
         return 4;
     }
 
-    pub fn write(self: Self, writer: std.io.AnyWriter) !void {
+    pub fn write(self: Self, writer: *std.Io.Writer) !void {
         return switch (self) {
             .MULW => |i| writer.print("MULW {s}, {s}, {s}\n", .{ i.rd.name(), i.rs1.name(), i.rs2.name() }),
             .DIVW => |i| writer.print("DIVW {s}, {s}, {s}\n", .{ i.rd.name(), i.rs1.name(), i.rs2.name() }),
@@ -817,7 +817,7 @@ pub const Ziscr = union(enum) {
         return 4;
     }
 
-    pub fn write(self: Self, writer: std.io.AnyWriter) !void {
+    pub fn write(self: Self, writer: *std.Io.Writer) !void {
         return switch (self) {
             .CSRRW => |i| writer.print("CSRRW {s}, {s}, {s}\n", .{ i.rd.name(), base.CSRAddrU.from_u12(i.csr).name(), i.rs1.name() }),
             .CSRRS => |i| writer.print("CSRRS {s}, {s}, {s}\n", .{ i.rd.name(), base.CSRAddrU.from_u12(i.csr).name(), i.rs1.name() }),
@@ -916,7 +916,7 @@ pub const RV32A = union(enum) {
         return 4;
     }
 
-    pub fn write(self: Self, writer: std.io.AnyWriter) !void {
+    pub fn write(self: Self, writer: *std.Io.Writer) !void {
         return switch (self) {
             .LR_W => |i| writer.print("lr.w{s}{s} {s}, {s}\n", .{ ".aq"[0..@intFromBool(i.aq)], ".rl"[0..@intFromBool(i.rl)], i.rd.name(), i.rs1.name() }),
             .SC_W => |i| writer.print("sc.w{s}{s} {s}, {s}, {s}\n", .{ ".aq"[0..@intFromBool(i.aq)], ".rl"[0..@intFromBool(i.rl)], i.rd.name(), i.rs1.name(), i.rs2.name() }),
@@ -993,7 +993,7 @@ pub const RV32Zaamo = union(enum) {
         return 4;
     }
 
-    pub fn write(self: Self, writer: std.io.AnyWriter) !void {
+    pub fn write(self: Self, writer: *std.Io.Writer) !void {
         return switch (self) {
             .AMOSWAP_W => |i| writer.print("amoswap.w{s}{s} {s}, {s}, {s}\n", .{ ".aq"[0..@intFromBool(i.aq)], ".rl"[0..@intFromBool(i.rl)], i.rd.name(), i.rs1.name(), i.rs2.name() }),
             .AMOADD_W => |i| writer.print("amoadd.w{s}{s} {s}, {s}, {s}\n", .{ ".aq"[0..@intFromBool(i.aq)], ".rl"[0..@intFromBool(i.rl)], i.rd.name(), i.rs1.name(), i.rs2.name() }),
@@ -1163,7 +1163,7 @@ pub const RV32C = union(enum) {
         return 2;
     }
 
-    pub fn write(self: Self, writer: std.io.AnyWriter) !void {
+    pub fn write(self: Self, writer: *std.Io.Writer) !void {
         return switch (self) {
             .C_LWSP => |i| writer.print("C_LWSP {s}, 0x{x}\n", .{ i.rd.name(), i.uimm }),
             .C_FLWSP => |i| writer.print("C_FLWSP {s}, 0x{x}\n", .{ i.rd.name(), i.uimm }),
@@ -1311,7 +1311,7 @@ pub const RV64C = union(enum) {
         return 2;
     }
 
-    pub fn write(self: Self, writer: std.io.AnyWriter) !void {
+    pub fn write(self: Self, writer: *std.Io.Writer) !void {
         return switch (self) {
             .C_LDSP => |i| writer.print("C_LDSP {s}, 0x{x}\n", .{ i.rd.name(), i.uimm }),
             .C_FLDSP => |i| writer.print("C_FLDSP {s}, 0x{x}\n", .{ i.rd.name(), i.uimm }),
@@ -1395,7 +1395,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                 };
             }
 
-            pub fn write(self: Self, writer: std.io.AnyWriter) !void {
+            pub fn write(self: Self, writer: *std.Io.Writer) !void {
                 return switch (self) {
                     .rv32i => |i| i.write(writer),
                     .z_iscr => |i| i.write(writer),
@@ -1487,7 +1487,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                 };
             }
 
-            pub fn write(self: Self, writer: std.io.AnyWriter) !void {
+            pub fn write(self: Self, writer: *std.Io.Writer) !void {
                 return switch (self) {
                     .rv32i => |i| i.write(writer),
                     .rv64i => |i| i.write(writer),

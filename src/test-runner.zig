@@ -559,10 +559,13 @@ pub fn build(comptime ARCH: Arch) type {
             var file = try std.fs.cwd().openFile(program_path, .{});
             defer file.close();
 
-            const header = try std.elf.Header.read(file);
+            var reader_buffer: [1024]u8 = undefined;
+            var reader = file.reader(&reader_buffer);
+
+            const header = try std.elf.Header.read(&reader.interface);
 
             print("Sections:\n", .{});
-            var program_header_iterator = header.program_header_iterator(file);
+            var program_header_iterator = header.iterateProgramHeaders(&reader);
             while (try program_header_iterator.next()) |ph| {
                 if (ph.p_type != std.elf.PT_LOAD) continue;
                 print("\t{x}-{x}\n", .{ ph.p_vaddr, ph.p_vaddr + ph.p_memsz });
@@ -578,7 +581,7 @@ pub fn build(comptime ARCH: Arch) type {
 
             var string_table: ?[]u8 = null;
 
-            var section_header_iterator = header.section_header_iterator(file);
+            var section_header_iterator = header.iterateSectionHeaders(&reader);
             var i: usize = 0;
             while (try section_header_iterator.next()) |sh| {
                 if (i != header.shstrndx) {
@@ -602,7 +605,7 @@ pub fn build(comptime ARCH: Arch) type {
 
             var tohost_addr: ?u64 = null;
 
-            section_header_iterator = header.section_header_iterator(file);
+            section_header_iterator = header.iterateSectionHeaders(&reader);
             while (try section_header_iterator.next()) |sh| {
                 const span = std.mem.span(@as([*:0]u8, @ptrCast(&string_table.?[sh.sh_name])));
                 if (std.mem.eql(u8, span, ".tohost")) {
@@ -657,7 +660,12 @@ pub fn build(comptime ARCH: Arch) type {
             var old_values = std.mem.zeroes([4]ARCH.uarch());
             self.cpu.data.mmio_read(pa, &self.memory);
             const instr = try ASM.from_memory(&self.memory);
-            try instr.write(std.io.getStdErr().writer().any());
+            {
+                var buffer: [1024]u8 = undefined;
+                const writer = std.debug.lockStderrWriter(&buffer);
+                defer std.debug.unlockStderrWriter();
+                try instr.write(writer);
+            }
             for (0..instr.used_grs().len) |i| {
                 old_values[i] = self.cpu.harts[0].data.I.regs[instr.used_grs()[i].to_u5()];
             }
@@ -667,9 +675,17 @@ pub fn build(comptime ARCH: Arch) type {
             if (!std.mem.eql(u8, self.memory[0..instr.len()], old_memory[0..len])) {
                 std.mem.reverse(u8, self.memory[0..instr.len()]);
                 std.mem.reverse(u8, old_memory[0..len]);
-                print("Before: {b:0>8}\n", .{self.memory[0..instr.len()]});
-                print("After: {b:0>8}\n", .{old_memory[0..len]});
-                return error.LossyDissasambler;
+                print("Before: ", .{});
+                for (self.memory[0..instr.len()]) |byte| {
+                    print("{b:0>8}", .{byte});
+                }
+                print("\n", .{});
+                print("After:  ", .{});
+                for (old_memory[0..len]) |byte| {
+                    print("{b:0>8}", .{byte});
+                }
+                print("\n", .{});
+                return error.LossyAssambly;
             }
 
             self.cpu.harts[0].step(&self.cpu.data, &self.memory);

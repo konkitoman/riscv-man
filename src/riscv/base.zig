@@ -746,7 +746,7 @@ pub const VarInstr = union(enum) {
         }
     }
 
-    pub fn write(self: Self, writer: std.io.AnyWriter) !void {
+    pub fn write(self: Self, writer: *std.Io.Writer) !void {
         return switch (self) {
             .x16 => |x| writer.print("X16 Instr: {b:0>16}\n", .{x}),
             .x32 => |x| writer.print("X32 Instr: {b:0>32}\n", .{x}),
