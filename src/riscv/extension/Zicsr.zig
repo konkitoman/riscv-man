@@ -267,7 +267,6 @@ pub fn buildDataHart(comptime ARCH: Arch) type {
         time: u64,
 
         /// # Supervisor Trap Setup
-        sstatus: u64 = @bitCast(std.mem.zeroInit(X64SSTATUS, .{ .UXL = ARCH.as_xlen() })),
         sie: uarch,
         stvec: uarch,
         scounteren: u32,
@@ -334,17 +333,24 @@ pub fn buildDataHart(comptime ARCH: Arch) type {
             switch (csr_addr) {
                 CSRAddr.sstatus.to_u12() => {
                     switch (self.xlen) {
-                        .X32 => self.sstatus = value,
+                        .X32 => {
+                            self.mstatus = value;
+                            const n_mask: u32 = 0b0111111001110010_0001100010011101;
+                            self.mstatus = (value ^ (value & n_mask)) | (self.mstatus & ~n_mask);
+                        },
                         .X64 => {
                             if (ARCH == .X32) unreachable;
-                            const sstatus = @as(*X64SSTATUS, @ptrCast(&self.sstatus));
-                            const v_sstatus = @as(X64SSTATUS, @bitCast(value));
-                            var UXL = sstatus.UXL;
-                            if (v_sstatus.UXL != 0 and v_sstatus.UXL != 3) {
-                                UXL = v_sstatus.UXL;
+
+                            const n_mask: u64 = 0b0111111111111111_1111111111111100_1111111001110010_0001100000011101;
+
+                            const mstatus = @as(*X64SSTATUS, @ptrCast(&self.mstatus));
+                            const v_mstatus = @as(X64SSTATUS, @bitCast((value ^ (value & n_mask)) | (self.mstatus & ~n_mask)));
+                            var UXL = mstatus.UXL;
+                            if (v_mstatus.UXL != 0 and v_mstatus.UXL != 3) {
+                                UXL = v_mstatus.UXL;
                             }
-                            sstatus.* = v_sstatus;
-                            sstatus.UXL = UXL;
+                            mstatus.* = v_mstatus;
+                            mstatus.UXL = UXL;
                         },
                     }
                 },
@@ -488,7 +494,7 @@ pub fn buildDataHart(comptime ARCH: Arch) type {
             switch (csr_addr) {
                 CSRAddr.time.to_u12() => return @truncate(self.time),
 
-                CSRAddr.sstatus.to_u12() => return @truncate(self.sstatus),
+                CSRAddr.sstatus.to_u12() => return @truncate(self.mstatus),
                 CSRAddr.sie.to_u12() => return self.sie,
                 CSRAddr.stvec.to_u12() => return self.stvec,
                 CSRAddr.scounteren.to_u12() => return self.scounteren,
@@ -969,18 +975,17 @@ pub fn SRET(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: type
                     }
 
                     hart_data.I.pc = hart_data.Zicsr.sepc;
+                    const mstatus = @as(*X32MSTATUS, @ptrCast(&hart_data.Zicsr.mstatus));
                     if (hart_data.Zicsr.mode == .M) {
-                        const mstatus = @as(*X32MSTATUS, @ptrCast(&hart_data.Zicsr.mstatus));
                         mstatus.MPRV = 0;
                     }
-                    const sstatus = @as(*X32SSTATUS, @ptrCast(&hart_data.Zicsr.sstatus));
-                    sstatus.SIE = sstatus.SPIE;
-                    if (sstatus.SPP == 0) {
-                        sstatus.SDT = 0;
+                    mstatus.SIE = mstatus.SPIE;
+                    if (mstatus.SPP == 0) {
+                        mstatus.SDT = 0;
                     }
-                    hart_data.Zicsr.mode = HartMode.from_u2(sstatus.SPP);
-                    sstatus.SPIE = 1;
-                    sstatus.SPP = @truncate(HartMode.U.to_u2());
+                    hart_data.Zicsr.mode = HartMode.from_u2(mstatus.SPP);
+                    mstatus.SPIE = 1;
+                    mstatus.SPP = @truncate(HartMode.U.to_u2());
                 },
                 .X64 => {
                     if (ARCH == .X32) unreachable;
@@ -991,24 +996,25 @@ pub fn SRET(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: type
 
                     hart_data.I.pc = hart_data.Zicsr.sepc;
                     const mstatus = @as(*X64MSTATUS, @ptrCast(&hart_data.Zicsr.mstatus));
-                    mstatus.MPRV = 0;
-                    const sstatus = @as(*X64SSTATUS, @ptrCast(&hart_data.Zicsr.sstatus));
-                    sstatus.SIE = sstatus.SPIE;
-                    if (sstatus.SPP == 0) {
-                        sstatus.SDT = 0;
+                    if (hart_data.Zicsr.mode == .M) {
+                        mstatus.MPRV = 0;
                     }
-                    hart_data.Zicsr.mode = HartMode.from_u2(sstatus.SPP);
+                    mstatus.SIE = mstatus.SPIE;
+                    if (mstatus.SPP == 0) {
+                        mstatus.SDT = 0;
+                    }
+                    hart_data.Zicsr.mode = HartMode.from_u2(mstatus.SPP);
 
-                    if (sstatus.SPP == HartMode.U.to_u2()) {
-                        switch (sstatus.UXL) {
+                    if (mstatus.SPP == HartMode.U.to_u2()) {
+                        switch (mstatus.UXL) {
                             1 => hart_data.Zicsr.xlen = .X32,
                             2 => hart_data.Zicsr.xlen = .X64,
                             else => {},
                         }
                     }
 
-                    sstatus.SPIE = 1;
-                    sstatus.SPP = @truncate(HartMode.U.to_u2());
+                    mstatus.SPIE = 1;
+                    mstatus.SPP = @truncate(HartMode.U.to_u2());
                 },
             }
         }
@@ -1054,7 +1060,9 @@ pub fn MRET(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: type
                     hart_data.I.pc = @as(u32, @truncate(hart_data.Zicsr.mepc));
                     const mstatus = @as(*X32MSTATUS, @ptrCast(&hart_data.Zicsr.mstatus));
                     const mstatush = @as(*X32MSTATUSH, @ptrCast(@as(*[2]u32, @ptrCast(&hart_data.Zicsr.mstatus))[1..2]));
-                    mstatus.MPRV = 0;
+                    if (mstatus.MPP != 3) {
+                        mstatus.MPRV = 0;
+                    }
                     mstatus.MIE = mstatus.MPIE;
                     mstatush.MDT = 0;
                     hart_data.Zicsr.mode = HartMode.from_u2(mstatus.MPP);
@@ -1065,7 +1073,9 @@ pub fn MRET(comptime ARCH: Arch, comptime DataEEI: type, comptime DataHart: type
                     if (ARCH == .X32) unreachable;
                     hart_data.I.pc = @as(u64, @truncate(hart_data.Zicsr.mepc));
                     const mstatus = @as(*X64MSTATUS, @ptrCast(&hart_data.Zicsr.mstatus));
-                    mstatus.MPRV = 0;
+                    if (mstatus.MPP != 3) {
+                        mstatus.MPRV = 0;
+                    }
                     mstatus.MIE = mstatus.MPIE;
                     mstatus.MDT = 0;
                     hart_data.Zicsr.mode = HartMode.from_u2(mstatus.MPP);

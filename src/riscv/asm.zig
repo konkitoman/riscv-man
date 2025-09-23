@@ -162,12 +162,12 @@ pub const RV32I = union(enum) {
                         0b100 => .{ .XORI = .{ .rd = IRf(i.i.rd), .rs1 = IRf(i.i.rs1), .imm = i.i.imm_11_0 } },
                         0b110 => .{ .ORI = .{ .rd = IRf(i.i.rd), .rs1 = IRf(i.i.rs1), .imm = i.i.imm_11_0 } },
                         0b111 => .{ .ANDI = .{ .rd = IRf(i.i.rd), .rs1 = IRf(i.i.rs1), .imm = i.i.imm_11_0 } },
-                        0b001 => .{ .SLLI = .{ .rd = IRf(i.i_1.rd), .rs1 = IRf(i.i_1.rs1), .shamt = @truncate(i.i_1.shamt) } },
-                        0b101 => switch (i.i_1.op) {
+                        0b001 => if (i.i_1.shamt >> 5 == 0) .{ .SLLI = .{ .rd = IRf(i.i_1.rd), .rs1 = IRf(i.i_1.rs1), .shamt = @truncate(i.i_1.shamt) } } else null,
+                        0b101 => if (i.i_1.shamt >> 5 == 0) switch (i.i_1.op) {
                             0 => .{ .SRLI = .{ .rd = IRf(i.i_1.rd), .rs1 = IRf(i.i_1.rs1), .shamt = @truncate(i.i_1.shamt) } },
                             1 << 4 => .{ .SRAI = .{ .rd = IRf(i.i_1.rd), .rs1 = IRf(i.i_1.rs1), .shamt = @truncate(i.i_1.shamt) } },
                             else => null,
-                        },
+                        } else null,
                     },
                     0b0110011 => switch (i.r.funct3) {
                         0b000 => switch (i.r.funct7) {
@@ -1350,6 +1350,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
             rv32m: RV32M,
             rv32c: RV32C,
             rv32z_aamo: RV32Zaamo,
+            unknown: base.VarInstr,
 
             const Self = @This();
 
@@ -1360,6 +1361,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv32m => |i| i.to_memory(memory),
                     .rv32c => |i| i.to_memory(memory),
                     .rv32z_aamo => |i| i.to_memory(memory),
+                    .unknown => |i| i.to_memory(memory),
                 };
             }
 
@@ -1381,8 +1383,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     return .{ .rv32z_aamo = i };
                 }
 
-                v.debug();
-                return error.Unimplemented;
+                return .{ .unknown = v };
             }
 
             pub fn len(self: Self) usize {
@@ -1392,6 +1393,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv32m => |i| i.len(),
                     .rv32c => |i| i.len(),
                     .rv32z_aamo => |i| i.len(),
+                    .unknown => |i| i.len(),
                 };
             }
 
@@ -1402,6 +1404,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv32m => |i| i.write(writer),
                     .rv32c => |i| i.write(writer),
                     .rv32z_aamo => |i| i.write(writer),
+                    .unknown => |i| i.write(writer),
                 };
             }
 
@@ -1412,6 +1415,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv32m => |i| i.used_grs(),
                     .rv32c => |i| i.used_grs(),
                     .rv32z_aamo => |i| i.used_grs(),
+                    .unknown => .{ IR.ZERO, IR.ZERO, IR.ZERO },
                 };
             }
         },
@@ -1469,7 +1473,6 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     return .{ .rv32z_aamo = i };
                 }
 
-                v.debug();
                 return .{ .unknown = v };
             }
 

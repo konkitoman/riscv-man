@@ -163,7 +163,13 @@ pub fn build(comptime ARCH: Arch) type {
                 //A leaf PTE has been reached. If i>0 and pte.ppn[i-1:0] ≠ 0, this is a misaligned superpage; stop
                 //and raise a page-fault exception corresponding to the original access type.
                 if (i == 2 and (pte >> 10) & 1 == 1) {
-                    @panic("missaligned");
+                    switch (info) {
+                        1 => self.trap(CAUSE.LoadPageFault, va),
+                        2 => self.trap(CAUSE.StorePageFault, va),
+                        3 => self.trap(CAUSE.FetchPageFault, va),
+                        else => {},
+                    }
+                    return false;
                 }
 
                 //Determine if the requested memory access is allowed by the pte.u bit, given the current privilege
@@ -182,9 +188,8 @@ pub fn build(comptime ARCH: Arch) type {
                         }
                     },
                     .S => {
-                        const sstatus: Zicsr.X32SSTATUS = @bitCast(@as(u32, @truncate(self.Zicsr.sstatus)));
                         const mstatus: Zicsr.X32MSTATUS = @bitCast(@as(u32, @truncate(self.Zicsr.mstatus)));
-                        if ((pte >> 4) & 1 == 1 and !(sstatus.SUM == 1 or mstatus.SUM == 1)) {
+                        if ((pte >> 4) & 1 == 1 and mstatus.SUM == 0) {
                             switch (info) {
                                 1 => self.trap(CAUSE.LoadPageFault, va),
                                 2 => self.trap(CAUSE.StorePageFault, va),
@@ -195,18 +200,15 @@ pub fn build(comptime ARCH: Arch) type {
                         }
                     },
                     .M => {
-                        const sstatus: Zicsr.X32SSTATUS = @bitCast(@as(u32, @truncate(self.Zicsr.sstatus)));
                         const mstatus: Zicsr.X32MSTATUS = @bitCast(@as(u32, @truncate(self.Zicsr.mstatus)));
-                        if (mstatus.MPRV == 1) {
-                            if ((pte >> 4) & 1 == 1 and !(sstatus.SUM == 1 or mstatus.SUM == 1)) {
-                                switch (info) {
-                                    1 => self.trap(CAUSE.LoadPageFault, va),
-                                    2 => self.trap(CAUSE.StorePageFault, va),
-                                    3 => self.trap(CAUSE.FetchPageFault, va),
-                                    else => {},
-                                }
-                                return false;
+                        if ((pte >> 4) & 1 == 1 and mstatus.SUM == 0) {
+                            switch (info) {
+                                1 => self.trap(CAUSE.LoadPageFault, va),
+                                2 => self.trap(CAUSE.StorePageFault, va),
+                                3 => self.trap(CAUSE.FetchPageFault, va),
+                                else => {},
                             }
+                            return false;
                         }
                     },
                     else => {},
@@ -230,7 +232,7 @@ pub fn build(comptime ARCH: Arch) type {
                         }
                     },
                     3 => {
-                        const sstatus: Zicsr.X32SSTATUS = @bitCast(@as(u32, @truncate(self.Zicsr.sstatus)));
+                        const sstatus: Zicsr.X32SSTATUS = @bitCast(@as(u32, @truncate(self.Zicsr.mstatus)));
                         if ((pte >> 3) & 1 == 0 and sstatus.MXR == 0) {
                             self.trap(CAUSE.FetchPageFault, va);
                             return false;
@@ -239,19 +241,13 @@ pub fn build(comptime ARCH: Arch) type {
                     else => {},
                 }
 
-                const PTE_A = (pte >> 6) & 1;
-                const PTE_D = (pte >> 7) & 1;
-                if ((PTE_A == 0 or info == 2) // 2 = store
-                and PTE_D == 0) {
-                    //If a store to pte would violate a PMA or PMP check, raise an access-fault exception
-                    //corresponding to the original access type.
-                    //TODO
+                const OLD = pte;
+                pte |= 1 << 6;
+                if (info == 2) {
+                    pte |= 1 << 7;
+                }
 
-                    pte |= 1 << 6;
-                    if (info == 2) {
-                        pte |= 1 << 7;
-                    }
-
+                if (OLD != pte) {
                     std.mem.writeInt(u32, &page_buffer, pte, .little);
                     eei_data.mmio_write(pte_addr, &page_buffer);
                 }
@@ -353,18 +349,30 @@ pub fn build(comptime ARCH: Arch) type {
 
             pub fn read(self: *@This(), eei_data: *DataEEI, index: u64, buffer: []u8) bool {
                 var pa: uarch = 0;
-                if (!self.va_to_pa(eei_data, 1, @truncate(index), &pa)) return false;
 
-                eei_data.mmio_read(pa, buffer);
+                for (0..buffer.len) |i| {
+                    if (!self.va_to_pa(eei_data, 1, @truncate(index + i), &pa)) return false;
+                    if (pa != index) {
+                        print("\t{x} -> {x}\n", .{ index + i, pa });
+                    }
+
+                    eei_data.mmio_read(pa, buffer[i .. i + 1]);
+                }
 
                 return true;
             }
 
             pub fn write(self: *@This(), eei_data: *DataEEI, index: u64, buffer: []const u8) bool {
                 var pa: uarch = 0;
-                if (!self.va_to_pa(eei_data, 2, @truncate(index), &pa)) return false;
 
-                eei_data.mmio_write(pa, buffer);
+                for (0..buffer.len) |i| {
+                    if (!self.va_to_pa(eei_data, 2, @truncate(index + i), &pa)) return false;
+                    if (pa != index) {
+                        print("\t{x} -> {x}\n", .{ index + i, pa });
+                    }
+
+                    eei_data.mmio_write(pa, buffer[i .. i + 1]);
+                }
 
                 return true;
             }
@@ -480,7 +488,7 @@ pub fn build(comptime ARCH: Arch) type {
 
                 switch (ARCH) {
                     .X32 => {
-                        const sstatus = @as(*Zicsr.X32SSTATUS, @ptrCast(&self.Zicsr.sstatus));
+                        const sstatus = @as(*Zicsr.X32SSTATUS, @ptrCast(&self.Zicsr.mstatus));
                         sstatus.SPP = @truncate(self.Zicsr.mode.to_u2());
                         self.Zicsr.mode = .S;
                         self.Zicsr.sepc = self.I.pc;
@@ -502,7 +510,7 @@ pub fn build(comptime ARCH: Arch) type {
                         }
                     },
                     .X64 => {
-                        const sstatus = @as(*Zicsr.X64SSTATUS, @ptrCast(&self.Zicsr.sstatus));
+                        const sstatus = @as(*Zicsr.X64SSTATUS, @ptrCast(&self.Zicsr.mstatus));
                         sstatus.SPP = @truncate(self.Zicsr.mode.to_u2());
                         self.Zicsr.mode = .S;
                         self.Zicsr.sepc = self.I.pc;
@@ -658,7 +666,24 @@ pub fn build(comptime ARCH: Arch) type {
             }
 
             var old_values = std.mem.zeroes([4]ARCH.uarch());
-            self.cpu.data.mmio_read(pa, &self.memory);
+            self.cpu.data.mmio_read(pa, self.memory[0..1]);
+
+            if (self.memory[0] & 0b11 == 0b11) {
+                var tmp: ARCH.uarch() = 0;
+                for (1..4) |i| {
+                    if (!self.cpu.harts[0].data.va_to_pa(&self.cpu.data, 3, va + @as(ARCH.uarch(), @truncate(i)), &tmp)) {
+                        return;
+                    }
+                    self.cpu.data.mmio_read(tmp, self.memory[i..(i + 1)]);
+                }
+            } else {
+                var tmp: ARCH.uarch() = 0;
+                if (!self.cpu.harts[0].data.va_to_pa(&self.cpu.data, 3, va + 1, &tmp)) {
+                    return;
+                }
+                self.cpu.data.mmio_read(tmp, self.memory[1..2]);
+            }
+
             const instr = try ASM.from_memory(&self.memory);
             {
                 var buffer: [1024]u8 = undefined;
