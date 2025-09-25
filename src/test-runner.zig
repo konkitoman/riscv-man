@@ -635,6 +635,11 @@ pub fn build(comptime ARCH: Arch) type {
 
             cpu.harts[0].data.Zicsr.mode = .M;
 
+            cpu.harts[0].data.Zicsr.misa |= 1 << 2; // C
+            cpu.harts[0].data.Zicsr.misa |= 1 << 8; // I
+            cpu.harts[0].data.Zicsr.misa |= 1 << 18; // Supervisor mode
+            cpu.harts[0].data.Zicsr.misa |= 1 << 20; // User mode
+
             return .{
                 .allocator = allocator,
                 .io_memory = io_memory,

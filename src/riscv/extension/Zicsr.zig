@@ -428,7 +428,7 @@ pub fn buildDataHart(comptime ARCH: Arch) type {
                         },
                     }
                 },
-                CSRAddr.misa.to_u12() => self.misa = value,
+                CSRAddr.misa.to_u12() => {},
                 CSRAddr.mideleg.to_u12() => self.mideleg = value,
                 CSRAddr.medeleg.to_u12() => self.medeleg = value,
                 CSRAddr.mie.to_u12() => self.mie = value,
