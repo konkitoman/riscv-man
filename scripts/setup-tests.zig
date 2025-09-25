@@ -17,7 +17,7 @@ pub fn main() !void {
     try prepare(gpa.allocator());
     try install(gpa.allocator());
 
-    print("Official test ready, run `run-official-tests`\n", .{});
+    print("Official test ready, run `run-tests`\n", .{});
 }
 
 fn prepare(allocator: Allocator) !void {

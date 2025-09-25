@@ -28,8 +28,8 @@ pub fn exists(name: []const u8) bool {
     }
 }
 
-pub fn run(allocator: std.mem.Allocator, argv: []const []const u8) !void {
-    var process = std.process.Child.init(argv, allocator);
+pub fn run(gpa: std.mem.Allocator, argv: []const []const u8) !void {
+    var process = std.process.Child.init(argv, gpa);
     process.stdin_behavior = .Inherit;
     process.stdout_behavior = .Inherit;
     process.stderr_behavior = .Inherit;
@@ -51,23 +51,23 @@ pub const GitOptions = struct {
     recursive: bool = false,
 };
 
-pub fn git_clone(allocator: std.mem.Allocator, repo: []const u8, out: ?[]const u8, options: GitOptions) !void {
-    var args = std.ArrayList([]const u8).init(allocator);
-    defer args.deinit();
+pub fn git_clone(gpa: std.mem.Allocator, repo: []const u8, out: ?[]const u8, options: GitOptions) !void {
+    var args = std.ArrayList([]const u8){};
+    defer args.deinit(gpa);
 
-    try args.append("git");
-    try args.append("clone");
+    try args.append(gpa, "git");
+    try args.append(gpa, "clone");
 
     if (options.recursive) {
-        try args.append("--recursive");
+        try args.append(gpa, "--recursive");
     }
 
-    try args.append(repo);
+    try args.append(gpa, repo);
     if (out) |out_name| {
-        try args.append(out_name);
+        try args.append(gpa, out_name);
     }
 
-    if (run(allocator, args.items)) |_| {
+    if (run(gpa, args.items)) |_| {
         return;
     } else |_| {
         return error.CannotGitClone;
@@ -133,7 +133,7 @@ pub fn setup_gnu_toolchain(allocator: Allocator) !void {
     try check_root();
 
     if (exists("riscv-gnu-toolchain") or exists("official-riscv-tests") or exists("local")) {
-        print("This is not clean!!! you can to run `clean_official_tests.zig`\n", .{});
+        print("This is not clean!\n", .{});
     }
 
     try prepare_gnu_toolchain(allocator);
