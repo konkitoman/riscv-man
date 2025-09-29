@@ -386,9 +386,8 @@ pub fn buildDataHart(comptime ARCH: Arch) type {
 
                         switch (satp.MODE) {
                             0 => {}, // Bare
-                            // 8 => { // Sv39
-
-                            // },
+                            8 => { // Sv39
+                            },
                             else => {
                                 debug.print("fixme:unimplemented SATP MODE: {}", .{satp.MODE});
                                 self.satp = old_satp;

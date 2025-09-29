@@ -61,7 +61,7 @@ pub const DataEEI = struct {
             }
         }
 
-        debug.print("OUT of bound write: {x}-{x}\n", .{ address, address + buffer.len });
+        debug.print("OUT of bound write: {x}-{x}\n", .{ address, address +% buffer.len });
     }
 };
 

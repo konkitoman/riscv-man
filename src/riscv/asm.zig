@@ -169,23 +169,23 @@ pub const RV32I = union(enum) {
                             else => null,
                         } else null,
                     },
-                    0b0110011 => switch (i.r.funct3) {
-                        0b000 => switch (i.r.funct7) {
-                            0 => .{ .ADD = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
-                            1 << 5 => .{ .SUB = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                    0b0110011 => switch (i.r.funct7) {
+                        0b0000000 => switch (i.r.funct3) {
+                            0b000 => .{ .ADD = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                            0b001 => .{ .SLL = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                            0b010 => .{ .SLT = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                            0b011 => .{ .SLTU = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                            0b100 => .{ .XOR = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                            0b101 => .{ .SRL = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                            0b110 => .{ .OR = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                            0b111 => .{ .AND = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                        },
+                        0b0100000 => switch (i.r.funct3) {
+                            0b000 => .{ .SUB = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                            0b101 => .{ .SRA = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
                             else => null,
                         },
-                        0b001 => .{ .SLL = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
-                        0b010 => .{ .SLT = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
-                        0b011 => .{ .SLTU = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
-                        0b100 => .{ .XOR = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
-                        0b101 => switch (i.r.funct7) {
-                            0 => .{ .SRL = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
-                            1 << 5 => .{ .SRA = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
-                            else => null,
-                        },
-                        0b110 => .{ .OR = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
-                        0b111 => .{ .AND = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2) } },
+                        else => null,
                     },
                     0b0001111 => switch (i.f.func3) {
                         0b000 => .{ .FENCE = .{ .rd = IRf(i.f.rd), .rs1 = IRf(i.f.rs1), .succ = i.f.succ, .pred = i.f.pred, .fm = i.f.fm } },

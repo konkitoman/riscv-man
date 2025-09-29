@@ -7,6 +7,7 @@ const Allocator = std.mem.Allocator;
 const IOMemory = @import("io/memory.zig");
 
 const I = @import("riscv/extension/I.zig");
+const M = @import("riscv/extension/M.zig");
 const C = @import("riscv/extension/C.zig");
 const Zifencei = @import("riscv/extension/Zifencei.zig");
 const Zicsr = @import("riscv/extension/Zicsr.zig");
@@ -129,14 +130,23 @@ pub fn build(comptime ARCH: Arch) type {
 
             const CAUSE = Zicsr.buildDataHart(ARCH).CAUSE;
 
-            pub fn va_to_pa_sv32(self: *@This(), eei_data: *DataEEI, info: u64, root: u32, va: u32, pa: *u32, i: u2) bool {
+            fn sv_trap(self: *@This(), info: u64, va: uarch) void {
+                switch (info) {
+                    1 => self.trap(CAUSE.LoadPageFault, va),
+                    2 => self.trap(CAUSE.StorePageFault, va),
+                    3 => self.trap(CAUSE.FetchPageFault, va),
+                    else => {},
+                }
+            }
+
+            pub fn va_to_pa_sv32(self: *@This(), eei_data: *DataEEI, info: u64, va: u32, pa: *u32) bool {
+                const satp = @as(Zicsr.X32SATP, @bitCast(@as(u32, @truncate(self.Zicsr.satp))));
+                return self._va_to_pa_sv32(eei_data, info, @as(u32, satp.PPN) << 12, va, pa, 2);
+            }
+
+            fn _va_to_pa_sv32(self: *@This(), eei_data: *DataEEI, info: u64, root: u32, va: u32, pa: *u32, i: u2) bool {
                 if (i == 0) {
-                    switch (info) {
-                        1 => self.trap(CAUSE.LoadPageFault, va),
-                        2 => self.trap(CAUSE.StorePageFault, va),
-                        3 => self.trap(CAUSE.FetchPageFault, va),
-                        else => {},
-                    }
+                    self.sv_trap(info, va);
                     return false;
                 }
 
@@ -147,28 +157,18 @@ pub fn build(comptime ARCH: Arch) type {
                 eei_data.mmio_read(pte_addr, &page_buffer);
                 pte = std.mem.readInt(u32, &page_buffer, .little);
                 if (pte & 1 == 0) {
-                    switch (info) {
-                        1 => self.trap(CAUSE.LoadPageFault, va),
-                        2 => self.trap(CAUSE.StorePageFault, va),
-                        3 => self.trap(CAUSE.FetchPageFault, va),
-                        else => {},
-                    }
+                    self.sv_trap(info, va);
                     return false;
                 }
 
                 if ((pte >> 1) & 0b111 == 0) {
-                    return va_to_pa_sv32(self, eei_data, info, (pte >> 10) << 12, va, pa, i - 1);
+                    return _va_to_pa_sv32(self, eei_data, info, (pte >> 10) << 12, va, pa, i - 1);
                 }
 
                 //A leaf PTE has been reached. If i>0 and pte.ppn[i-1:0] ≠ 0, this is a misaligned superpage; stop
                 //and raise a page-fault exception corresponding to the original access type.
-                if (i == 2 and (pte >> 10) & 1 == 1) {
-                    switch (info) {
-                        1 => self.trap(CAUSE.LoadPageFault, va),
-                        2 => self.trap(CAUSE.StorePageFault, va),
-                        3 => self.trap(CAUSE.FetchPageFault, va),
-                        else => {},
-                    }
+                if (i == 2 and (pte >> 10) & 1 != 0) {
+                    self.sv_trap(info, va);
                     return false;
                 }
 
@@ -178,36 +178,21 @@ pub fn build(comptime ARCH: Arch) type {
                 switch (self.Zicsr.mode) {
                     .U => {
                         if ((pte >> 4) & 1 == 0) {
-                            switch (info) {
-                                1 => self.trap(CAUSE.LoadPageFault, va),
-                                2 => self.trap(CAUSE.StorePageFault, va),
-                                3 => self.trap(CAUSE.FetchPageFault, va),
-                                else => {},
-                            }
+                            self.sv_trap(info, va);
                             return false;
                         }
                     },
                     .S => {
                         const mstatus: Zicsr.X32MSTATUS = @bitCast(@as(u32, @truncate(self.Zicsr.mstatus)));
                         if ((pte >> 4) & 1 == 1 and mstatus.SUM == 0) {
-                            switch (info) {
-                                1 => self.trap(CAUSE.LoadPageFault, va),
-                                2 => self.trap(CAUSE.StorePageFault, va),
-                                3 => self.trap(CAUSE.FetchPageFault, va),
-                                else => {},
-                            }
+                            self.sv_trap(info, va);
                             return false;
                         }
                     },
                     .M => {
                         const mstatus: Zicsr.X32MSTATUS = @bitCast(@as(u32, @truncate(self.Zicsr.mstatus)));
                         if ((pte >> 4) & 1 == 1 and mstatus.SUM == 0) {
-                            switch (info) {
-                                1 => self.trap(CAUSE.LoadPageFault, va),
-                                2 => self.trap(CAUSE.StorePageFault, va),
-                                3 => self.trap(CAUSE.FetchPageFault, va),
-                                else => {},
-                            }
+                            self.sv_trap(info, va);
                             return false;
                         }
                     },
@@ -252,12 +237,124 @@ pub fn build(comptime ARCH: Arch) type {
                     eei_data.mmio_write(pte_addr, &page_buffer);
                 }
 
+                const addr: u32 = (pte >> 10) << 12;
                 if (i == 2) {
-                    const new_addr: u32 = (((pte >> 10) & (std.math.maxInt(u12) << 10)) << 12) | (va & std.math.maxInt(u22));
-                    pa.* = new_addr;
+                    pa.* = addr +% (va & std.math.maxInt(u22));
                 } else {
-                    const new_addr: u32 = ((pte >> 10) << 12) | (va & std.math.maxInt(u12));
-                    pa.* = new_addr;
+                    pa.* = addr +% (va & std.math.maxInt(u12));
+                }
+                return true;
+            }
+
+            pub fn va_to_pa_sv39(self: *@This(), eei_data: *DataEEI, info: u64, va: u64, pa: *u64) bool {
+                const satp = @as(Zicsr.X64SATP, @bitCast(@as(u64, @truncate(self.Zicsr.satp))));
+                return self._va_to_pa_sv39(eei_data, info, @as(u64, satp.PPN) << 12, va, pa, 3);
+            }
+
+            pub fn _va_to_pa_sv39(self: *@This(), eei_data: *DataEEI, info: u64, root: u64, va: u64, pa: *u64, i: u2) bool {
+                const bit_38: u1 = @truncate((va >> 38));
+                if (i == 0 or (bit_38 == 1 and ((va >> 39) != std.math.maxInt(u25))) //
+                or (bit_38 == 0 and ((va >> 39) != 0))) {
+                    self.sv_trap(info, va);
+                    return false;
+                }
+
+                const pte_addr = root + (((va >> (3 + (@as(u5, 9) * i))) & std.math.maxInt(u9)) * 8);
+
+                var page_buffer: [8]u8 = undefined;
+                var pte: u64 = undefined;
+
+                eei_data.mmio_read(pte_addr, &page_buffer);
+                pte = std.mem.readInt(u64, &page_buffer, .little);
+
+                if (pte & 1 == 0) {
+                    self.sv_trap(info, va);
+                    return false;
+                }
+
+                if ((pte >> 1) & 0b111 == 0) {
+                    return _va_to_pa_sv39(self, eei_data, info, (pte >> 10) << 12, va, pa, i - 1);
+                }
+
+                //A leaf PTE has been reached. If i>0 and pte.ppn[i-1:0] ≠ 0, this is a misaligned superpage; stop
+                //and raise a page-fault exception corresponding to the original access type.
+                if ((i == 2 and (pte >> 10) & 1 != 0) //
+                or (i == 3 and (pte >> 10) & 3 != 0)) {
+                    self.sv_trap(info, va);
+                    return false;
+                }
+
+                //Determine if the requested memory access is allowed by the pte.u bit, given the current privilege
+                //mode and the value of the SUM and MXR fields of the mstatus register. If not, stop and raise a
+                //page-fault exception corresponding to the original access type.
+                switch (self.Zicsr.mode) {
+                    .U => {
+                        if ((pte >> 4) & 1 == 0) {
+                            self.sv_trap(info, va);
+                            return false;
+                        }
+                    },
+                    .S => {
+                        const mstatus: Zicsr.X64MSTATUS = @bitCast(@as(u64, @truncate(self.Zicsr.mstatus)));
+                        if ((pte >> 4) & 1 == 1 and mstatus.SUM == 0) {
+                            self.sv_trap(info, va);
+                            return false;
+                        }
+                    },
+                    .M => {
+                        const mstatus: Zicsr.X64MSTATUS = @bitCast(@as(u64, @truncate(self.Zicsr.mstatus)));
+                        if ((pte >> 4) & 1 == 1 and mstatus.SUM == 0) {
+                            self.sv_trap(info, va);
+                            return false;
+                        }
+                    },
+                    else => {},
+                }
+
+                //Determine if the requested memory access is allowed by the pte.r, pte.w, and pte.x bits, given the
+                //Shadow Stack Memory Protection rules. If not, stop and raise an access-fault exception.
+                //Determine if the requested memory access is allowed by the pte.r, pte.w, and pte.x bits. If not, stop
+                //and raise a page-fault exception corresponding to the original access type.
+                switch (info) {
+                    1 => {
+                        if ((pte >> 1) & 1 == 0) {
+                            self.trap(CAUSE.LoadPageFault, va);
+                            return false;
+                        }
+                    },
+                    2 => {
+                        if ((pte >> 2) & 1 == 0) {
+                            self.trap(CAUSE.StorePageFault, va);
+                            return false;
+                        }
+                    },
+                    3 => {
+                        const sstatus: Zicsr.X64SSTATUS = @bitCast(@as(u64, @truncate(self.Zicsr.mstatus)));
+                        if ((pte >> 3) & 1 == 0 and sstatus.MXR == 0) {
+                            self.trap(CAUSE.FetchPageFault, va);
+                            return false;
+                        }
+                    },
+                    else => {},
+                }
+
+                const OLD = pte;
+                pte |= 1 << 6;
+                if (info == 2) {
+                    pte |= 1 << 7;
+                }
+
+                if (OLD != pte) {
+                    std.mem.writeInt(u64, &page_buffer, pte, .little);
+                    eei_data.mmio_write(pte_addr, &page_buffer);
+                }
+
+                const addr: u64 = (pte >> 10) << 12;
+                switch (i) {
+                    3 => pa.* = addr +% (va & std.math.maxInt(u30)),
+                    2 => pa.* = addr +% (va & std.math.maxInt(u21)),
+                    1 => pa.* = addr +% (va & std.math.maxInt(u12)),
+                    0 => unreachable,
                 }
                 return true;
             }
@@ -275,7 +372,7 @@ pub fn build(comptime ARCH: Arch) type {
                                         return true;
                                     } else if (satp.MODE == 1) { // Sv32
                                         var _pa: u32 = 0;
-                                        if (!self.va_to_pa_sv32(eei_data, info, @as(u32, satp.PPN) << 12, @truncate(va), &_pa, 2)) {
+                                        if (!self.va_to_pa_sv32(eei_data, info, @truncate(va), &_pa)) {
                                             return false;
                                         }
 
@@ -292,7 +389,7 @@ pub fn build(comptime ARCH: Arch) type {
                                     return true;
                                 } else if (satp.MODE == 1) { // Sv32
                                     var _pa: u32 = 0;
-                                    if (!self.va_to_pa_sv32(eei_data, info, @as(u32, satp.PPN) << 12, @truncate(va), &_pa, 2)) {
+                                    if (!self.va_to_pa_sv32(eei_data, info, @truncate(va), &_pa)) {
                                         return false;
                                     }
 
@@ -306,7 +403,7 @@ pub fn build(comptime ARCH: Arch) type {
                                     return true;
                                 } else if (satp.MODE == 1) { // Sv32
                                     var _pa: u32 = 0;
-                                    if (!self.va_to_pa_sv32(eei_data, info, @as(u32, satp.PPN) << 12, @truncate(va), &_pa, 2)) {
+                                    if (!self.va_to_pa_sv32(eei_data, info, @truncate(va), &_pa)) {
                                         return false;
                                     }
 
@@ -322,6 +419,21 @@ pub fn build(comptime ARCH: Arch) type {
                         const satp = @as(Zicsr.X64SATP, @bitCast(@as(u64, @truncate(self.Zicsr.satp))));
                         switch (self.Zicsr.mode) {
                             .M => {
+                                const mstatus = @as(Zicsr.X64MSTATUS, @bitCast(@as(u64, @truncate(self.Zicsr.mstatus))));
+                                if (mstatus.MPRV == 1 and mstatus.MPP != 3 and info != 3) {
+                                    if (satp.MODE == 0) {
+                                        pa.* = va;
+                                        return true;
+                                    } else if (satp.MODE == 8) { // Sv39
+                                        if (!self.va_to_pa_sv39(eei_data, info, @truncate(va), pa)) {
+                                            return false;
+                                        }
+
+                                        return true;
+                                    } else {
+                                        std.debug.panic("SATP mode not implemented: {}", .{satp.MODE});
+                                    }
+                                }
                                 pa.* = va;
                                 return true;
                             },
@@ -329,12 +441,23 @@ pub fn build(comptime ARCH: Arch) type {
                                 if (satp.MODE == 0) {
                                     pa.* = va;
                                     return true;
+                                } else if (satp.MODE == 8) { // Sv39
+                                    if (!self.va_to_pa_sv39(eei_data, info, @truncate(va), pa)) {
+                                        return false;
+                                    }
+
+                                    return true;
                                 }
                                 std.debug.panic("Unimplemented SATP MODE: {}\n", .{satp.MODE});
                             },
                             .U => {
                                 if (satp.MODE == 0) {
                                     pa.* = va;
+                                    return true;
+                                } else if (satp.MODE == 8) { // Sv39
+                                    if (!self.va_to_pa_sv39(eei_data, info, @truncate(va), pa)) {
+                                        return false;
+                                    }
                                     return true;
                                 }
                                 std.debug.panic("Unimplemented SATP MODE: {}\n", .{satp.MODE});
@@ -535,7 +658,12 @@ pub fn build(comptime ARCH: Arch) type {
             }
         };
 
-        const INSTRS = I.buildInstrs(ARCH, DataEEI, DataHart) ++ Zifencei.buildInstrs(ARCH, DataEEI, DataHart) ++ Zicsr.buildInstrs(ARCH, DataEEI, DataHart) ++ C.buildInstrs(ARCH, DataEEI, DataHart);
+        const INSTRS = //
+            I.buildInstrs(ARCH, DataEEI, DataHart) ++ //
+            Zifencei.buildInstrs(ARCH, DataEEI, DataHart) ++ //
+            Zicsr.buildInstrs(ARCH, DataEEI, DataHart) ++ //
+            C.buildInstrs(ARCH, DataEEI, DataHart) ++ //
+            M.buildInstrs(ARCH, DataEEI, DataHart);
         const EEI = default_EEI.buildEEI(ARCH, 1, DataHart, &INSTRS);
         const ELF = elf.build(EEI);
 
