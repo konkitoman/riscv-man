@@ -9,64 +9,105 @@ const Task = struct {
     name: []const u8,
     process: std.process.Child,
     stdout: std.ArrayList(u8),
+    alloc: Allocator,
+    term: ?std.process.Child.Term = null,
+    progress_node: std.Progress.Node,
     id: u32,
 };
 
-fn handle_test(pipe: std.posix.fd_t, task: *Task, alloc: Allocator) void {
-    if (task.process.spawn()) |_| {} else |_| {}
-    if (!(std.process.hasEnvVar(alloc, "SIMPLE") catch false)) {
-        if (task.process.collectOutput(alloc, &task.stdout, &task.stdout, std.math.maxInt(usize))) {} else |_| {}
-    }
-    if (task.process.wait()) |term| {
-        task.process.term = term;
-    } else |_| {}
-    task.process.progress_node.end();
+fn handle_test(io: std.Io, queue: *std.Io.Queue(u32), task: *Task) void {
+    if (task.process.stdout != null and task.process.stderr != null) {
+        const stdout = task.process.stdout.?;
+        const stderr = task.process.stderr.?;
+        var stdout_buffer: [1024]u8 = undefined;
+        const stdout_buffers: [1][]u8 = .{&stdout_buffer};
+        var stderr_buffer: [1024]u8 = undefined;
+        const stderr_buffers: [1][]u8 = .{&stderr_buffer};
+        const select_variant = union(enum) {
+            stdout: std.Io.File.ReadStreamingError!usize,
+            stderr: std.Io.File.ReadStreamingError!usize,
+        };
+        var select_buffer: [2]select_variant = undefined;
 
-    var buffer: [4]u8 = undefined;
-    std.mem.writeInt(u32, &buffer, task.id, .little);
-    if (std.posix.write(pipe, &buffer)) |_| {} else |_| {}
+        var select = std.Io.Select(select_variant).init(io, &select_buffer);
+        select.concurrent(.stdout, std.Io.File.readStreaming, .{ stdout, io, &stdout_buffers }) catch {
+            std.log.err("No concurrency!", .{});
+        };
+        select.concurrent(.stderr, std.Io.File.readStreaming, .{ stderr, io, &stderr_buffers }) catch {
+            std.log.err("No concurrency!", .{});
+        };
+
+        while (true) {
+            const result = select.await() catch {
+                continue;
+            };
+
+            switch (result) {
+                .stdout => |res| {
+                    if (res) |len| {
+                        task.stdout.appendSlice(task.alloc, stdout_buffer[0..len]) catch {};
+                    } else |_| {
+                        select.cancelDiscard();
+                        break;
+                    }
+                    select.concurrent(.stdout, std.Io.File.readStreaming, .{ stdout, io, &stdout_buffers }) catch {};
+                },
+                .stderr => |res| {
+                    if (res) |len| {
+                        task.stdout.appendSlice(task.alloc, stderr_buffer[0..len]) catch {};
+                    } else |_| {
+                        select.cancelDiscard();
+                        break;
+                    }
+                    select.concurrent(.stderr, std.Io.File.readStreaming, .{ stderr, io, &stderr_buffers }) catch {};
+                },
+            }
+        }
+    }
+
+    if (task.process.wait(io)) |term| {
+        task.term = term;
+    } else |_| {}
+    task.progress_node.end();
+
+    queue.putOne(io, task.id) catch |err| {
+        std.log.err("Cannot add to queue: {}", .{err});
+    };
 }
 
-pub fn main() !void {
-    try utils.check_root();
+pub fn main(init: std.process.Init) !void {
+    const io = init.io;
 
-    var args = std.process.args();
+    try utils.check_root(io);
+
+    var args = init.minimal.args.iterate();
     const path = args.next();
     _ = path;
 
     const filter = if (args.next()) |bin| bin else "";
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-
-    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    var arena = std.heap.ArenaAllocator.init(init.gpa);
     defer arena.deinit();
-    var thread_safe_allocator = std.heap.ThreadSafeAllocator{ .child_allocator = arena.allocator() };
-    const alloc = thread_safe_allocator.allocator();
+    const alloc = arena.allocator();
 
     print("Building the test runner:\n", .{});
-    try utils.run(alloc, &.{ "zig", "build", "test-runner" });
+    try utils.run(io, &.{ "zig", "build", "test-runner" });
 
-    const cwd = try std.fs.cwd().realpathAlloc(alloc, ".");
-    const test_runner_path = try std.fs.cwd().realpathAlloc(alloc, "zig-out/bin/rvman-test-runner");
-    var dir = try std.fs.cwd().openDir(try std.fs.path.join(alloc, &.{ "local", "share", "riscv-tests", "isa" }), .{ .iterate = true });
-    defer dir.close();
+    const cwd = try std.Io.Dir.cwd().realPathFileAlloc(io, ".", alloc);
+    const test_runner_path = try std.Io.Dir.cwd().realPathFileAlloc(io, "zig-out/bin/rvman-test-runner", alloc);
+    var dir = try std.Io.Dir.cwd().openDir(io, try std.fs.path.join(alloc, &.{ "local", "share", "riscv-tests", "isa" }), .{ .iterate = true });
+    defer dir.close(io);
     var dir_iter = dir.iterate();
 
-    var tests = std.ArrayList(*Task){};
+    var tests: std.ArrayList(*Task) = .empty;
 
     print("\nRunning tests:\n", .{});
-    const progress = std.Progress.start(.{});
+    const progress = std.Progress.start(io, .{});
 
-    const pipes = try std.posix.pipe();
-    const efd = try std.posix.epoll_create1(0);
+    var queue_buffer: [1]u32 = undefined;
+    var queue = std.Io.Queue(u32).init(&queue_buffer);
 
-    {
-        var event: std.os.linux.epoll_event = .{ .events = std.os.linux.EPOLL.IN, .data = .{ .u32 = 1 } };
-        std.debug.assert(std.os.linux.epoll_ctl(efd, std.os.linux.EPOLL.CTL_ADD, pipes[0], &event) == 0);
-    }
-
-    while (try dir_iter.next()) |entry| {
+    while (try dir_iter.next(io)) |entry| {
         if (entry.kind != .file) {
             continue;
         }
@@ -96,42 +137,35 @@ pub fn main() !void {
         const name = try alloc.dupe(u8, entry.name);
         const argv = try alloc.dupe([]const u8, &.{ test_runner_path, cpu_meta, program });
 
+        var stdio_type: std.process.SpawnOptions.StdIo = undefined;
+        if (!try init.minimal.environ.contains(alloc, "SIMPLE")) {
+            stdio_type = .pipe;
+        } else {
+            stdio_type = .close;
+        }
+
+        const progress_node = progress.start(entry.name, 0);
+
         task.* = .{
             .id = last_len + 1,
             .name = name,
-            .process = std.process.Child.init(argv, alloc),
-            .stdout = .{},
+            .alloc = init.gpa,
+            .process = try std.process.spawn(io, .{ .argv = argv, .stdout = stdio_type, .stderr = stdio_type, .progress_node = progress_node }),
+            .progress_node = progress_node,
+            .stdout = .empty,
         };
-        if (!try std.process.hasEnvVar(alloc, "SIMPLE")) {
-            task.process.stdout_behavior = .Pipe;
-            task.process.stderr_behavior = .Pipe;
-        } else {
-            task.process.stdout_behavior = .Close;
-            task.process.stderr_behavior = .Close;
-        }
-        task.process.progress_node = progress.start(entry.name, 0);
-        _ = try std.Thread.spawn(.{ .allocator = alloc }, handle_test, .{ pipes[1], task, alloc });
+        _ = try std.Thread.spawn(.{ .allocator = alloc }, handle_test, .{ io, &queue, task });
     }
-
-    var events: [1]std.os.linux.epoll_event = undefined;
 
     var finished: usize = 0;
     while (tests.items.len != 0) {
-        const result = std.os.linux.epoll_wait(efd, &events, 1, -1);
-        if (result != 1) continue;
-        if (events[0].data.u32 == 1) {
-            var buffer: [4]u8 = undefined;
-            std.debug.assert(try std.posix.read(pipes[0], &buffer) == 4);
-            const id = std.mem.readInt(u32, &buffer, .little);
-            const task = tests.items[id - 1];
-            std.debug.assert(task.id == id);
-            finished += 1;
+        _ = try queue.getOne(io);
+        finished += 1;
 
-            if (finished == tests.items.len) {
-                break;
-            }
-            continue;
+        if (finished == tests.items.len) {
+            break;
         }
+        continue;
     }
 
     progress.end();
@@ -140,29 +174,29 @@ pub fn main() !void {
     var passed: usize = 0;
 
     for (tests.items) |task| {
-        if (task.process.term) |result| {
-            if (result) |term| {
-                switch (term) {
-                    .Exited => |code| {
-                        if (code == 0) {
-                            passed += 1;
-                            print("\x1b[32mPass\x1B[0m {s}\n", .{task.name});
-                            continue;
-                        }
-                    },
-                    else => {},
-                }
-            } else |_| {}
+        if (task.term) |term| {
+            switch (term) {
+                .exited => |code| {
+                    if (code == 0) {
+                        passed += 1;
+                        print("\x1b[32mPass\x1B[0m {s}\n", .{task.name});
+                        task.stdout.deinit(task.alloc);
+                        continue;
+                    }
+                },
+                else => {},
+            }
         } else {
             print("\tNo\n", .{});
         }
         failed += 1;
 
-        if (!try std.process.hasEnvVar(alloc, "SIMPLE")) {
+        if (!try init.minimal.environ.contains(alloc, "SIMPLE")) {
             print("\x1B[91mFailed\x1B[0m {s}\n", .{task.name});
             print("{s}", .{task.stdout.items});
         }
         print("\x1B[91mFailed\x1B[0m {s}\n", .{task.name});
+        task.stdout.deinit(task.alloc);
     }
     print("\n{d} tests runned!\n", .{tests.items.len});
     print("\x1B[91m{d} tests failed!\x1B[0m\n", .{failed});

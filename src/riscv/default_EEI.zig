@@ -104,7 +104,7 @@ pub fn buildEEI(comptime ARCH: base.Arch, comptime harts: usize, DataHart: type,
 
         pub fn init(allocator: Allocator, hart_data: DataHart) EEI {
             var self = EEI{
-                .data = .{ .allocator = allocator, .bus = .{} },
+                .data = .{ .allocator = allocator, .bus = .empty },
                 .harts = undefined,
             };
 

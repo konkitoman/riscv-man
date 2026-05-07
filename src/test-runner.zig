@@ -18,13 +18,12 @@ const DataEEI = default_EEI.DataEEI;
 
 const print = std.debug.print;
 
-pub fn main() !void {
-    var args = std.process.args();
+pub fn main(init: std.process.Init) !void {
+    var args = init.minimal.args.iterate();
     const path = args.next();
     _ = path;
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
+    const gpa = init.gpa;
 
     var cpu_meta = if (args.next()) |bin| bin else {
         print("cpu meta is required!\n", .{});
@@ -62,14 +61,14 @@ pub fn main() !void {
 
     switch (arch) {
         32 => {
-            var inner = try build(.X32).init(gpa.allocator(), program_path);
+            var inner = try build(.X32).init(init.io, gpa, program_path);
             defer inner.deinit();
             while (true) {
                 try inner.step();
             }
         },
         64 => {
-            var inner = try build(.X64).init(gpa.allocator(), program_path);
+            var inner = try build(.X64).init(init.io, gpa, program_path);
             defer inner.deinit();
             while (true) {
                 try inner.step();
@@ -669,12 +668,12 @@ pub fn build(comptime ARCH: Arch) type {
 
         allocator: Allocator,
         io_tohost: *IOTOHOST,
-        tohost_buffer: std.ArrayListUnmanaged(u8) = .{},
+        tohost_buffer: std.ArrayListUnmanaged(u8) = .empty,
         memory: [8]u8,
         io_memory: *IOMemory,
         cpu: *EEI,
 
-        pub fn init(allocator: Allocator, program_path: []const u8) !@This() {
+        pub fn init(io: std.Io, allocator: Allocator, program_path: []const u8) !@This() {
             const cpu = try allocator.create(EEI);
             errdefer allocator.destroy(cpu);
             cpu.* = EEI.init(allocator, std.mem.zeroInit(DataHart, .{}));
@@ -692,11 +691,11 @@ pub fn build(comptime ARCH: Arch) type {
             try cpu.data.mmio_add(IOMemory, 0x80000000, io_memory);
 
             // Loading ELF
-            var file = try std.fs.cwd().openFile(program_path, .{});
-            defer file.close();
+            var file = try std.Io.Dir.cwd().openFile(io, program_path, .{});
+            defer file.close(io);
 
             var reader_buffer: [1024]u8 = undefined;
-            var reader = file.reader(&reader_buffer);
+            var reader = file.reader(io, &reader_buffer);
 
             const header = try std.elf.Header.read(&reader.interface);
 
@@ -709,7 +708,7 @@ pub fn build(comptime ARCH: Arch) type {
                 const buffer = try allocator.alloc(u8, ph.p_filesz);
                 defer allocator.free(buffer);
 
-                _ = try file.preadAll(buffer, ph.p_offset);
+                _ = try file.readPositionalAll(io, buffer, ph.p_offset);
                 cpu.data.mmio_write(ph.p_vaddr, buffer);
             }
 
@@ -727,7 +726,7 @@ pub fn build(comptime ARCH: Arch) type {
                 const buffer = try allocator.alloc(u8, sh.sh_size);
                 errdefer allocator.free(buffer);
 
-                _ = try file.preadAll(buffer, sh.sh_offset);
+                _ = try file.readPositionalAll(io, buffer, sh.sh_offset);
 
                 string_table = buffer;
                 break;
@@ -820,9 +819,9 @@ pub fn build(comptime ARCH: Arch) type {
             const instr = try ASM.from_memory(&self.memory);
             {
                 var buffer: [1024]u8 = undefined;
-                const writer = std.debug.lockStderrWriter(&buffer);
-                defer std.debug.unlockStderrWriter();
-                try instr.write(writer);
+                const writer = std.debug.lockStderr(&buffer);
+                defer std.debug.unlockStderr();
+                try instr.write(&writer.file_writer.interface);
             }
             for (0..instr.used_grs().len) |i| {
                 old_values[i] = self.cpu.harts[0].data.I.regs[instr.used_grs()[i].to_u5()];

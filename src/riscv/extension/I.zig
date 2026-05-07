@@ -163,7 +163,7 @@ pub fn JALR(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b1100111) return false; // JALR opcode
+            if (x32_instr.generic.opcode != 0b1100111) return false; // JALR opcode
             if (x32_instr.i.funct3 != 0b000) return false; // JALR func3
 
             return true;
@@ -207,7 +207,7 @@ pub fn BEQ(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b1100011) return false; // BRANCH opcode
+            if (x32_instr.generic.opcode != 0b1100011) return false; // BRANCH opcode
             if (x32_instr.b.funct3 != 0b000) return false; // BEQ func3
 
             return true;
@@ -258,7 +258,7 @@ pub fn BNE(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b1100011) return false; // BRANCH opcode
+            if (x32_instr.generic.opcode != 0b1100011) return false; // BRANCH opcode
             if (x32_instr.b.funct3 != 0b001) return false; // BNE func3
 
             return true;
@@ -298,7 +298,7 @@ pub fn BLT(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b1100011) return false; // BRANCH opcode
+            if (x32_instr.generic.opcode != 0b1100011) return false; // BRANCH opcode
             if (x32_instr.b.funct3 != 0b100) return false; // BLT func3
 
             return true;
@@ -338,7 +338,7 @@ pub fn BGE(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b1100011) return false; // BRANCH opcode
+            if (x32_instr.generic.opcode != 0b1100011) return false; // BRANCH opcode
             if (x32_instr.b.funct3 != 0b101) return false; // BGE func3
 
             return true;
@@ -377,7 +377,7 @@ pub fn BLTU(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b1100011) return false; // BRANCH opcode
+            if (x32_instr.generic.opcode != 0b1100011) return false; // BRANCH opcode
             if (x32_instr.b.funct3 != 0b110) return false; // BLTU func3
 
             return true;
@@ -417,7 +417,7 @@ pub fn BGEU(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b1100011) return false; // BRANCH opcode
+            if (x32_instr.generic.opcode != 0b1100011) return false; // BRANCH opcode
             if (x32_instr.b.funct3 != 0b111) return false; // BGEU func3
 
             return true;
@@ -457,7 +457,7 @@ pub fn LB(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: t
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0000011) return false; // LOAD opcode
+            if (x32_instr.generic.opcode != 0b0000011) return false; // LOAD opcode
             if (x32_instr.i.funct3 != 0b000) return false; // LB func3
 
             return true;
@@ -498,7 +498,7 @@ pub fn LH(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: t
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0000011) return false; // LOAD opcode
+            if (x32_instr.generic.opcode != 0b0000011) return false; // LOAD opcode
             if (x32_instr.i.funct3 != 0b001) return false; // LH func3
 
             return true;
@@ -538,7 +538,7 @@ pub fn LW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: t
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0000011) return false; // LOAD opcode
+            if (x32_instr.generic.opcode != 0b0000011) return false; // LOAD opcode
             if (x32_instr.i.funct3 != 0b010) return false; // LW func3
 
             return true;
@@ -578,7 +578,7 @@ pub fn LBU(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0000011) return false; // LOAD opcode
+            if (x32_instr.generic.opcode != 0b0000011) return false; // LOAD opcode
             if (x32_instr.i.funct3 != 0b100) return false; // LBU func3
 
             return true;
@@ -618,7 +618,7 @@ pub fn LHU(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0000011) return false; // LOAD opcode
+            if (x32_instr.generic.opcode != 0b0000011) return false; // LOAD opcode
             if (x32_instr.i.funct3 != 0b101) return false; // LHU func3
 
             return true;
@@ -658,7 +658,7 @@ pub fn SB(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: t
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0100011) return false; // STORE opcode
+            if (x32_instr.generic.opcode != 0b0100011) return false; // STORE opcode
             if (x32_instr.s.funct3 != 0b000) return false; // SB func3
 
             return true;
@@ -697,7 +697,7 @@ pub fn SH(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: t
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0100011) return false; // STORE opcode
+            if (x32_instr.generic.opcode != 0b0100011) return false; // STORE opcode
             if (x32_instr.s.funct3 != 0b001) return false; // SH func3
 
             return true;
@@ -736,7 +736,7 @@ pub fn SW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: t
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0100011) return false; // STORE opcode
+            if (x32_instr.generic.opcode != 0b0100011) return false; // STORE opcode
             if (x32_instr.s.funct3 != 0b010) return false; // SW func3
 
             return true;
@@ -772,7 +772,7 @@ pub fn ADDI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0010011) return false; // OP-IMM opcode
+            if (x32_instr.generic.opcode != 0b0010011) return false; // OP-IMM opcode
             if (x32_instr.i.funct3 != 0b000) return false; // SW func3
 
             return true;
@@ -819,7 +819,7 @@ pub fn SLTI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0010011) return false; // OP-IMM opcode
+            if (x32_instr.generic.opcode != 0b0010011) return false; // OP-IMM opcode
             if (x32_instr.i.funct3 != 0b010) return false; // SLTI func3
 
             return true;
@@ -859,7 +859,7 @@ pub fn SLTIU(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0010011) return false; // OP-IMM opcode
+            if (x32_instr.generic.opcode != 0b0010011) return false; // OP-IMM opcode
             if (x32_instr.i.funct3 != 0b011) return false; // SLTIU func3
 
             return true;
@@ -899,7 +899,7 @@ pub fn XORI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0010011) return false; // OP-IMM opcode
+            if (x32_instr.generic.opcode != 0b0010011) return false; // OP-IMM opcode
             if (x32_instr.i.funct3 != 0b100) return false; // XORI func3
 
             return true;
@@ -939,7 +939,7 @@ pub fn ORI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0010011) return false; // OP-IMM opcode
+            if (x32_instr.generic.opcode != 0b0010011) return false; // OP-IMM opcode
             if (x32_instr.i.funct3 != 0b110) return false; // ORI func3
 
             return true;
@@ -979,7 +979,7 @@ pub fn ANDI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0010011) return false; // OP-IMM opcode
+            if (x32_instr.generic.opcode != 0b0010011) return false; // OP-IMM opcode
             if (x32_instr.i.funct3 != 0b111) return false; // ANDI func3
 
             return true;
@@ -1016,7 +1016,7 @@ pub fn SLLI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0010011) return false; // OP-IMM opcode
+            if (x32_instr.generic.opcode != 0b0010011) return false; // OP-IMM opcode
             if (x32_instr.i_1.funct3 != 0b001) return false; // SLLI func3
             if (x32_instr.i_1.op != 0b000000) return false; // SLLI op
             if (ARCH == .X32) {
@@ -1063,7 +1063,7 @@ pub fn SRLI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0010011) return false; // OP-IMM opcode
+            if (x32_instr.generic.opcode != 0b0010011) return false; // OP-IMM opcode
             if (x32_instr.i_1.funct3 != 0b101) return false; // SRLI func3
             if (x32_instr.i_1.op != 0b000000) return false; // SRLI op
             if (ARCH == .X32) {
@@ -1106,7 +1106,7 @@ pub fn SRAI(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0010011) return false; // OP-IMM opcode
+            if (x32_instr.generic.opcode != 0b0010011) return false; // OP-IMM opcode
             if (x32_instr.i_1.funct3 != 0b101) return false; // SRLI func3
             if (x32_instr.i_1.op != 0b010000) return false; // SRAI op
             if (ARCH == .X32) {
@@ -1154,7 +1154,7 @@ pub fn ADD(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0110011) return false; // OP opcode
+            if (x32_instr.generic.opcode != 0b0110011) return false; // OP opcode
             if (x32_instr.r.funct3 != 0b000) return false; // ADD func3
             if (x32_instr.r.funct7 != 0b0000000) return false; // ADD func7
 
@@ -1192,7 +1192,7 @@ pub fn SUB(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0110011) return false; // OP opcode
+            if (x32_instr.generic.opcode != 0b0110011) return false; // OP opcode
             if (x32_instr.r.funct3 != 0b000) return false; // ADD func3
             if (x32_instr.r.funct7 != 0b0100000) return false; // SUB func7
 
@@ -1230,7 +1230,7 @@ pub fn SLL(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0110011) return false; // OP opcode
+            if (x32_instr.generic.opcode != 0b0110011) return false; // OP opcode
             if (x32_instr.r.funct3 != 0b001) return false; // SLL func3
             if (x32_instr.r.funct7 != 0b0000000) return false; // SLL func7
 
@@ -1270,7 +1270,7 @@ pub fn SLT(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0110011) return false; // OP opcode
+            if (x32_instr.generic.opcode != 0b0110011) return false; // OP opcode
             if (x32_instr.r.funct3 != 0b010) return false; // SLT func3
             if (x32_instr.r.funct7 != 0b0000000) return false; // SLT func7
 
@@ -1308,7 +1308,7 @@ pub fn SLTU(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0110011) return false; // OP opcode
+            if (x32_instr.generic.opcode != 0b0110011) return false; // OP opcode
             if (x32_instr.r.funct3 != 0b011) return false; // SLTU func3
             if (x32_instr.r.funct7 != 0b0000000) return false; // SLTU func7
 
@@ -1346,7 +1346,7 @@ pub fn XOR(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0110011) return false; // OP opcode
+            if (x32_instr.generic.opcode != 0b0110011) return false; // OP opcode
             if (x32_instr.r.funct3 != 0b100) return false; // XOR func3
             if (x32_instr.r.funct7 != 0b0000000) return false; // XOR func7
 
@@ -1384,7 +1384,7 @@ pub fn SRL(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0110011) return false; // OP opcode
+            if (x32_instr.generic.opcode != 0b0110011) return false; // OP opcode
             if (x32_instr.r.funct3 != 0b101) return false; // SRL func3
             if (x32_instr.r.funct7 != 0b0000000) return false; // SRL func7
 
@@ -1424,7 +1424,7 @@ pub fn SRA(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0110011) return false; // OP opcode
+            if (x32_instr.generic.opcode != 0b0110011) return false; // OP opcode
             if (x32_instr.r.funct3 != 0b101) return false; // SRL func3
             if (x32_instr.r.funct7 != 0b0100000) return false; // SRA func7
 
@@ -1471,7 +1471,7 @@ pub fn OR(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: t
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0110011) return false; // OP opcode
+            if (x32_instr.generic.opcode != 0b0110011) return false; // OP opcode
             if (x32_instr.r.funct3 != 0b110) return false; // OR func3
             if (x32_instr.r.funct7 != 0b0000000) return false; // OR func7
 
@@ -1509,7 +1509,7 @@ pub fn AND(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0110011) return false; // OP opcode
+            if (x32_instr.generic.opcode != 0b0110011) return false; // OP opcode
             if (x32_instr.r.funct3 != 0b111) return false; // AND func3
             if (x32_instr.r.funct7 != 0b0000000) return false; // AND func7
 
@@ -1547,7 +1547,7 @@ pub fn FENCE(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0001111) return false; // MISC-MEM opcode
+            if (x32_instr.generic.opcode != 0b0001111) return false; // MISC-MEM opcode
             if (x32_instr.f.func3 != 0b000) return false; // FENCE func3
 
             return true;
@@ -1576,7 +1576,7 @@ pub fn ECALL(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b1110011) return false; // SYSTEM opcode
+            if (x32_instr.generic.opcode != 0b1110011) return false; // SYSTEM opcode
             if (x32_instr.s.imm_4_0 != 0b00000) return false; // ECALL imm_4_0
             if (x32_instr.s.funct3 != 0b000) return false; // ECALL func3
             if (x32_instr.s.rs1 != 0b00000) return false; // ECALL rs1
@@ -1609,7 +1609,7 @@ pub fn EBREAK(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHar
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b1110011) return false; // SYSTEM opcode
+            if (x32_instr.generic.opcode != 0b1110011) return false; // SYSTEM opcode
             if (x32_instr.s.imm_4_0 != 0b00000) return false; // EBREAK imm_4_0
             if (x32_instr.s.funct3 != 0b000) return false; // EBREAK func3
             if (x32_instr.s.rs1 != 0b00000) return false; // EBREAK rs1
@@ -1646,7 +1646,7 @@ pub fn LWU(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: 
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0000011) return false; // LOAD opcode
+            if (x32_instr.generic.opcode != 0b0000011) return false; // LOAD opcode
             if (x32_instr.i.funct3 != 0b110) return false; // LWU func3
 
             return true;
@@ -1687,7 +1687,7 @@ pub fn LD(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: t
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0000011) return false; // LOAD opcode
+            if (x32_instr.generic.opcode != 0b0000011) return false; // LOAD opcode
             if (x32_instr.i.funct3 != 0b011) return false; // LD func3
 
             return true;
@@ -1729,7 +1729,7 @@ pub fn SD(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart: t
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0100011) return false; // STORE opcode
+            if (x32_instr.generic.opcode != 0b0100011) return false; // STORE opcode
             if (x32_instr.s.funct3 != 0b011) return false; // SD func3
 
             return true;
@@ -1769,7 +1769,7 @@ pub fn ADDIW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0011011) return false; // OP-IMM-32 opcode
+            if (x32_instr.generic.opcode != 0b0011011) return false; // OP-IMM-32 opcode
             if (x32_instr.i.funct3 != 0b000) return false; // SW func3
 
             return true;
@@ -1810,7 +1810,7 @@ pub fn SLLIW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0011011) return false; // OP-IMM-32 opcode
+            if (x32_instr.generic.opcode != 0b0011011) return false; // OP-IMM-32 opcode
             if (x32_instr.i_1.funct3 != 0b001) return false; // SLLI func3
             if (x32_instr.i_1.op != 0b000000) return false; // SLLI op
             if (ARCH == .X32) {
@@ -1855,7 +1855,7 @@ pub fn SRLIW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0011011) return false; // OP-IMM-32 opcode
+            if (x32_instr.generic.opcode != 0b0011011) return false; // OP-IMM-32 opcode
             if (x32_instr.i_1.funct3 != 0b101) return false; // SRLI func3
             if (x32_instr.i_1.op != 0b000000) return false; // SRLI op
             if (ARCH == .X32) {
@@ -1901,7 +1901,7 @@ pub fn SRAIW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0011011) return false; // OP-IMM-32 opcode
+            if (x32_instr.generic.opcode != 0b0011011) return false; // OP-IMM-32 opcode
             if (x32_instr.i_1.funct3 != 0b101) return false; // SRLI func3
             if (x32_instr.i_1.op != 0b010000) return false; // SRAI op
             if (ARCH == .X32) {
@@ -1955,7 +1955,7 @@ pub fn ADDW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0111011) return false; // OP-32 opcode
+            if (x32_instr.generic.opcode != 0b0111011) return false; // OP-32 opcode
             if (x32_instr.r.funct3 != 0b000) return false; // ADD func3
             if (x32_instr.r.funct7 != 0b0000000) return false; // ADD func7
 
@@ -1998,7 +1998,7 @@ pub fn SUBW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
             if (ARCH == .X32) @panic("X64 instruction");
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0111011) return false; // OP-32 opcode
+            if (x32_instr.generic.opcode != 0b0111011) return false; // OP-32 opcode
             if (x32_instr.r.funct3 != 0b000) return false; // ADD func3
             if (x32_instr.r.funct7 != 0b0100000) return false; // SUB func7
 
@@ -2039,7 +2039,7 @@ pub fn SLLW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0111011) return false; // OP-32 opcode
+            if (x32_instr.generic.opcode != 0b0111011) return false; // OP-32 opcode
             if (x32_instr.r.funct3 != 0b001) return false; // SLL func3
             if (x32_instr.r.funct7 != 0b0000000) return false; // SLL func7
 
@@ -2082,7 +2082,7 @@ pub fn SRLW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0111011) return false; // OP-32 opcode
+            if (x32_instr.generic.opcode != 0b0111011) return false; // OP-32 opcode
             if (x32_instr.r.funct3 != 0b101) return false; // SRL func3
             if (x32_instr.r.funct7 != 0b0000000) return false; // SRL func7
 
@@ -2126,7 +2126,7 @@ pub fn SRAW(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHart:
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0111011) return false; // OP-32 opcode
+            if (x32_instr.generic.opcode != 0b0111011) return false; // OP-32 opcode
             if (x32_instr.r.funct3 != 0b101) return false; // SRL func3
             if (x32_instr.r.funct7 != 0b0100000) return false; // SRA func7
 

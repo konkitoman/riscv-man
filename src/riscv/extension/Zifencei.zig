@@ -17,7 +17,7 @@ pub fn FENCE_I(comptime ARCH: base.Arch, comptime DataEEI: type, comptime DataHa
 
             const x32_instr: IFX32 = @bitCast(std.mem.readInt(u32, @ptrCast(instr_data), .little));
 
-            if (x32_instr.opcode != 0b0001111) return false; // MISC-MEM opcode
+            if (x32_instr.generic.opcode != 0b0001111) return false; // MISC-MEM opcode
             if (x32_instr.f.func3 != 0b001) return false; // FENCE.I func3
 
             return true;

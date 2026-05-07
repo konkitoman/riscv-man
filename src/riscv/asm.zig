@@ -124,7 +124,7 @@ pub const RV32I = union(enum) {
             .x32 => |x32| {
                 const i = base.InstrFormatX32.from_u32(x32);
 
-                return switch (i.opcode) {
+                return switch (i.generic.opcode) {
                     0b0110111 => .{ .LUI = .{ .rd = IRf(i.u.rd), .imm = i.u.imm_31_12 } },
                     0b0010111 => .{ .AUIPC = .{ .rd = IRf(i.u.rd), .imm = i.u.imm_31_12 } },
                     0b1101111 => .{ .JAL = .{ .rd = IRf(i.j.rd), .imm = @bitCast(base.rearrange(u20, u21, i.jimm.imm, &base.@"imm_20|10:1|11|19:12")) } },
@@ -471,7 +471,7 @@ pub const RV64I = union(enum) {
         return switch (instr) {
             .x32 => |x32| {
                 const i = base.InstrFormatX32.from_u32(x32);
-                return switch (i.opcode) {
+                return switch (i.generic.opcode) {
                     0b0000011 => switch (i.i.funct3) {
                         0b110 => .{ .LWU = .{ .rd = IRf(i.i.rd), .rs1 = IRf(i.i.rs1), .offset = i.i.imm_11_0 } },
                         0b011 => .{ .LD = .{ .rd = IRf(i.i.rd), .rs1 = IRf(i.i.rs1), .offset = i.i.imm_11_0 } },
@@ -784,7 +784,7 @@ pub const Ziscr = union(enum) {
             .x32 => |x32| {
                 const i = base.InstrFormatX32.from_u32(x32);
 
-                return switch (i.opcode) {
+                return switch (i.generic.opcode) {
                     0b1110011 => switch (i.i.funct3) {
                         0b000 => switch (i.i.imm_11_0 >> 5) {
                             0b1000 => switch (i.i.imm_11_0 & 0b11111) {
@@ -819,12 +819,12 @@ pub const Ziscr = union(enum) {
 
     pub fn write(self: Self, writer: *std.Io.Writer) !void {
         return switch (self) {
-            .CSRRW => |i| writer.print("CSRRW {s}, {s}, {s}\n", .{ i.rd.name(), base.CSRAddrU.from_u12(i.csr).name(), i.rs1.name() }),
-            .CSRRS => |i| writer.print("CSRRS {s}, {s}, {s}\n", .{ i.rd.name(), base.CSRAddrU.from_u12(i.csr).name(), i.rs1.name() }),
-            .CSRRC => |i| writer.print("CSRRC {s}, {s}, {s}\n", .{ i.rd.name(), base.CSRAddrU.from_u12(i.csr).name(), i.rs1.name() }),
-            .CSRRWI => |i| writer.print("CSRRWI {s}, {s}, 0x{x}\n", .{ i.rd.name(), base.CSRAddrU.from_u12(i.csr).name(), i.uimm }),
-            .CSRRSI => |i| writer.print("CSRRSI {s}, {s}, 0x{x}\n", .{ i.rd.name(), base.CSRAddrU.from_u12(i.csr).name(), i.uimm }),
-            .CSRRCI => |i| writer.print("CSRRCI {s}, {s}, 0x{x}\n", .{ i.rd.name(), base.CSRAddrU.from_u12(i.csr).name(), i.uimm }),
+            .CSRRW => |i| writer.print("CSRRW {s}, {s}, {s}\n", .{ i.rd.name(), base.CSRAddr.from_u12(i.csr).name(), i.rs1.name() }),
+            .CSRRS => |i| writer.print("CSRRS {s}, {s}, {s}\n", .{ i.rd.name(), base.CSRAddr.from_u12(i.csr).name(), i.rs1.name() }),
+            .CSRRC => |i| writer.print("CSRRC {s}, {s}, {s}\n", .{ i.rd.name(), base.CSRAddr.from_u12(i.csr).name(), i.rs1.name() }),
+            .CSRRWI => |i| writer.print("CSRRWI {s}, {s}, 0x{x}\n", .{ i.rd.name(), base.CSRAddr.from_u12(i.csr).name(), i.uimm }),
+            .CSRRSI => |i| writer.print("CSRRSI {s}, {s}, 0x{x}\n", .{ i.rd.name(), base.CSRAddr.from_u12(i.csr).name(), i.uimm }),
+            .CSRRCI => |i| writer.print("CSRRCI {s}, {s}, 0x{x}\n", .{ i.rd.name(), base.CSRAddr.from_u12(i.csr).name(), i.uimm }),
 
             .SRET => writer.print("SRET\n", .{}),
             .MRET => writer.print("MRET\n", .{}),
@@ -895,7 +895,7 @@ pub const RV32A = union(enum) {
             .x32 => |x32| {
                 const i = base.InstrFormatX32.from_u32(x32);
 
-                return switch (i.opcode) {
+                return switch (i.generic) {
                     0b0101111 => switch (i.r.funct3) {
                         0b010 => switch (i.r.funct7 >> 2) {
                             0b00010 => .{ .LR_W = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rl = i.r.funct7 & 1 == 1, .aq = i.r.funct7 & 2 == 2 } },
@@ -965,7 +965,7 @@ pub const RV32Zaamo = union(enum) {
             .x32 => |x32| {
                 const i = base.InstrFormatX32.from_u32(x32);
 
-                return switch (i.opcode) {
+                return switch (i.generic.opcode) {
                     0b0101111 => switch (i.r.funct3) {
                         0b010 => switch (i.r.funct7 >> 2) {
                             0b00001 => .{ .AMOSWAP_W = .{ .rd = IRf(i.r.rd), .rs1 = IRf(i.r.rs1), .rs2 = IRf(i.r.rs2), .rl = i.r.funct7 & 1 == 1, .aq = i.r.funct7 & 2 == 2 } },
@@ -1096,7 +1096,7 @@ pub const RV32C = union(enum) {
             .x16 => |x16| {
                 const i = base.InstrFormatX16.from_u16(x16);
 
-                return switch (i.opcode) {
+                return switch (i.generic.opcode) {
                     0b00 => switch (i.cl.funct3) {
                         0b000 => .{ .C_ADDI4SPN = .{ .uimm = i.ciw.imm, .rd = PIRf(i.ciw.prd) } },
                         0b010 => .{ .C_LW = .{ .uimm = (s(u5, i.cl.imm2) << 2) | s(u5, i.cl.imm1), .rs1 = PIRf(i.cl.prs1), .rd = PIRf(i.cl.prd) } },
@@ -1208,8 +1208,8 @@ pub const RV32C = union(enum) {
             .C_FLW => |i| .{ i.rd.to_reg(), i.rs1.to_reg(), IR.ZERO },
             .C_SW => |i| .{ i.rs1.to_reg(), i.rs2.to_reg(), IR.ZERO },
             .C_FSW => |i| .{ i.rs1.to_reg(), i.rs2.to_reg(), IR.ZERO },
-            .C_J => |_| .{ IR.ZERO, IR.ZERO, IR.ZERO },
-            .C_JAL => |_| .{ IR.ZERO, IR.ZERO, IR.ZERO },
+            .C_J => .{ IR.ZERO, IR.ZERO, IR.ZERO },
+            .C_JAL => .{ IR.ZERO, IR.ZERO, IR.ZERO },
             .C_JR => |i| .{ i.rs1, IR.ZERO, IR.ZERO },
             .C_JALR => |i| .{ i.rs1, IR.RA, IR.ZERO },
             .C_BEQZ => |i| .{ i.rs1.to_reg(), IR.ZERO, IR.ZERO },
@@ -1217,7 +1217,7 @@ pub const RV32C = union(enum) {
             .C_LI => |i| .{ i.rd, IR.ZERO, IR.ZERO },
             .C_LUI => |i| .{ i.rd, IR.ZERO, IR.ZERO },
             .C_ADDI => |i| .{ i.rd, IR.ZERO, IR.ZERO },
-            .C_ADDI16SP => |_| .{ IR.SP, IR.ZERO, IR.ZERO },
+            .C_ADDI16SP => .{ IR.SP, IR.ZERO, IR.ZERO },
             .C_ADDI4SPN => |i| .{ i.rd.to_reg(), IR.SP, IR.ZERO },
             .C_SLLI => |i| .{ i.rd, IR.ZERO, IR.ZERO },
             .C_SRLI => |i| .{ i.rd.to_reg(), IR.ZERO, IR.ZERO },
@@ -1268,7 +1268,7 @@ pub const RV64C = union(enum) {
             .x16 => |x16| {
                 const i = base.InstrFormatX16.from_u16(x16);
 
-                return switch (i.opcode) {
+                return switch (i.generic.opcode) {
                     0b00 => switch (i.cl.funct3) {
                         0b001 => .{ .C_FLD = .{ .uimm = (s(u5, i.cl.imm1) << 3) + s(u5, i.cl.imm2), .rs1 = PIRf(i.cl.prs1), .rd = PIRf(i.cl.prd) } },
                         0b011 => .{ .C_LD = .{ .uimm = (s(u5, i.cl.imm1) << 3) + s(u5, i.cl.imm2), .rs1 = PIRf(i.cl.prs1), .rd = PIRf(i.cl.prd) } },
@@ -1514,7 +1514,7 @@ pub fn build_asm(comptime arch: base.Arch) type {
                     .rv32c => |i| i.used_grs(),
                     .rv64c => |i| i.used_grs(),
                     .rv32z_aamo => |i| i.used_grs(),
-                    .unknown => |_| .{ IR.ZERO, IR.ZERO, IR.ZERO },
+                    .unknown => .{ IR.ZERO, IR.ZERO, IR.ZERO },
                 };
             }
         },

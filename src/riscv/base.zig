@@ -598,8 +598,9 @@ pub const CSRAddr = enum(u12) {
     dpc = 0x7B1,
     dscratch0 = 0x7B2,
     dscratch1 = 0x7B3,
+    _,
 
-    pub fn from_u12(value: u12) ?@This() {
+    pub fn from_u12(value: u12) @This() {
         return @enumFromInt(value);
     }
 
@@ -607,52 +608,19 @@ pub const CSRAddr = enum(u12) {
         return @intFromEnum(self);
     }
 
-    pub fn name(self: @This()) ?[]const u8 {
+    var buffer = std.mem.zeroes([8]u8);
+
+    pub fn name(self: @This()) []const u8 {
         inline for (@typeInfo(@This()).@"enum".fields) |field| {
             if (field.value == self.to_u12()) {
                 return field.name;
             }
         }
-        return null;
-    }
-};
-
-pub const CSRAddrU = union(enum) {
-    known: CSRAddr,
-    unknown: u12,
-
-    pub fn from_u12(value: u12) @This() {
-        return .{ .known = std.meta.intToEnum(CSRAddr, value) catch {
-            return .{ .unknown = value };
-        } };
-    }
-
-    pub fn to_u12(self: @This()) u12 {
-        return switch (self) {
-            .knwon => |v| v.to_u12(),
-            .unknwon => |u| u,
+        var writer = std.Io.Writer.fixed(&buffer);
+        writer.print("0x{x}", .{@as(u12, @intFromEnum(self))}) catch {
+            unreachable;
         };
-    }
-
-    var buffer = std.mem.zeroes([8]u8);
-
-    pub fn name(self: @This()) []const u8 {
-        switch (self) {
-            .known => |csr| {
-                if (csr.name()) |csr_name| {
-                    return csr_name;
-                } else {
-                    unreachable;
-                }
-            },
-            .unknown => |num| {
-                var stream = std.io.fixedBufferStream(&buffer);
-                std.fmt.format(stream.writer(), "0x{x}", .{num}) catch {
-                    unreachable;
-                };
-                return &buffer;
-            },
-        }
+        return &buffer;
     }
 };
 
@@ -714,9 +682,9 @@ pub const VarInstr = union(enum) {
 
     pub fn len(self: Self) usize {
         return switch (self) {
-            .x16 => |_| 2,
-            .x32 => |_| 4,
-            .x64 => |_| 8,
+            .x16 => 2,
+            .x32 => 4,
+            .x64 => 8,
         };
     }
 
@@ -832,7 +800,7 @@ pub const InstrFormatX32 = packed union {
     pub const JImm = packed struct { opcode: u7, rd: u5, imm: u20 };
     pub const F = packed struct { opcode: u7, rd: u5, func3: u3, rs1: u5, succ: FFlags, pred: FFlags, fm: u4 };
 
-    opcode: u7,
+    generic: packed struct { opcode: u7, _padding: u25 },
     r: R,
     i: I,
     i_1: I_1,
@@ -862,7 +830,7 @@ pub const InstrFormatX32 = packed union {
     }
 };
 
-pub const InstrFormatX16 = packed union {
+pub const InstrFormatX16 = packed union(u16) {
     pub const CR = packed struct { op: u2, rs2: u5, rd: u5, funct4: u4 };
     pub const CI = packed struct { op: u2, imm_2_6: u5, rd: u5, imm_12: u1, funct3: u3 };
     pub const CSS = packed struct { op: u2, rs2: u5, imm: u6, funct3: u3 };
@@ -943,7 +911,7 @@ pub const InstrFormatX16 = packed union {
 
     pub const C = packed struct { op: u2, _: u11, funct3: u3 };
 
-    opcode: u2,
+    generic: packed struct { opcode: u2, _padding: u14 },
     cr: CR,
     ci: CI,
     css: CSS,
@@ -1005,7 +973,7 @@ pub const PMPCFG = packed struct { R: u1, W: u1, X: u1, A: u2, _zero: u2, L: u1 
 
 fn buildCause(arch: Arch) type {
     return packed struct {
-        code: @Type(std.builtin.Type{ .int = .{ .signedness = .unsigned, .bits = arch.bytes() - 1 } }),
+        code: @Int(.unsigned, arch.bytes() - 1),
         interrupt: u1,
 
         pub const InstructionAddrMisaligned = @This(){ .interrupt = 0, .code = 0 };
@@ -1028,7 +996,7 @@ fn buildCause(arch: Arch) type {
 }
 
 fn buildMNStatus(arch: Arch) type {
-    return packed struct { _reserved0: u3, NMIE: u1, _reserved1: u3, MNPV: u1, _reserved2: u1, MNPELP: u1, _reserved3: u1, MNPP: u2, _reserved4: @Type(std.builtin.Type{ .int = .{ .signedness = .unsigned, .bits = arch.bytes() - 13 } }) };
+    return packed struct { _reserved0: u3, NMIE: u1, _reserved1: u3, MNPV: u1, _reserved2: u1, MNPELP: u1, _reserved3: u1, MNPP: u2, _reserved4: @Int(.unsigned, arch.bytes() - 13) };
 }
 
 pub const MCOUNTEREN = packed struct { CY: u1, TM: u1, IR: u1, HMP3: u1, HMP4: u1, HMP5: u1, HMP6: u1, HMP7: u1, HMP8: u1, HMP9: u1, HMP10: u1, HMP11: u1, HMP12: u1, HMP13: u1, HMP14: u1, HMP15: u1, HMP16: u1, HMP17: u1, HMP18: u1, HMP19: u1, HMP20: u1, HMP21: u1, HMP22: u1, HMP23: u1, HMP24: u1, HMP25: u1, HMP26: u1, HMP27: u1, HMP28: u1, HMP29: u1, HMP30: u1, HMP31: u1 };

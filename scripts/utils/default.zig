@@ -7,11 +7,11 @@ const c = @cImport({
     @cInclude("stdlib.h");
 });
 
-pub fn check_root() !void {
-    const cwd = std.fs.cwd();
+pub fn check_root(io: std.Io) !void {
+    const cwd = std.Io.Dir.cwd();
     var path_buff = std.mem.zeroes([std.fs.max_path_bytes]u8);
-    const p = try cwd.realpath(".", &path_buff);
-    var path_iter = std.mem.splitBackwardsScalar(u8, p, std.fs.path.sep);
+    const p = try cwd.realPathFile(io, ".", &path_buff);
+    var path_iter = std.mem.splitBackwardsScalar(u8, path_buff[0..p], std.fs.path.sep);
     if (path_iter.next()) |segment| {
         if (std.mem.eql(u8, segment, "scripts")) {
             print("You should run this script from the project root!\n", .{});
@@ -20,22 +20,24 @@ pub fn check_root() !void {
     }
 }
 
-pub fn exists(name: []const u8) bool {
-    if (std.fs.cwd().statFile(name)) |_| {
+pub fn exists(io: std.Io, name: []const u8) bool {
+    if (std.Io.Dir.cwd().statFile(io, name, .{})) |_| {
         return true;
     } else |_| {
         return false;
     }
 }
 
-pub fn run(gpa: std.mem.Allocator, argv: []const []const u8) !void {
-    var process = std.process.Child.init(argv, gpa);
-    process.stdin_behavior = .Inherit;
-    process.stdout_behavior = .Inherit;
-    process.stderr_behavior = .Inherit;
-    const process_term = try process.spawnAndWait();
+pub fn run(io: std.Io, argv: []const []const u8) !void {
+    var process = try std.process.spawn(io, .{
+        .argv = argv,
+        .stdin = .inherit,
+        .stdout = .inherit,
+        .stderr = .inherit,
+    });
+    const process_term = try process.wait(io);
     switch (process_term) {
-        .Exited => |code| {
+        .exited => |code| {
             if (code != 0) {
                 print("Exit code: {d}\n", .{code});
                 return error.Fail;
