@@ -3,10 +3,6 @@ const path = std.fs.path;
 const print = std.debug.print;
 const Allocator = std.mem.Allocator;
 
-const c = @cImport({
-    @cInclude("stdlib.h");
-});
-
 pub fn check_root(io: std.Io) !void {
     const cwd = std.Io.Dir.cwd();
     var path_buff = std.mem.zeroes([std.fs.max_path_bytes]u8);
@@ -28,12 +24,13 @@ pub fn exists(io: std.Io, name: []const u8) bool {
     }
 }
 
-pub fn run(io: std.Io, argv: []const []const u8) !void {
+pub fn run(io: std.Io, environ: ?*std.process.Environ.Map, argv: []const []const u8) !void {
     var process = try std.process.spawn(io, .{
         .argv = argv,
         .stdin = .inherit,
         .stdout = .inherit,
         .stderr = .inherit,
+        .environ_map = environ,
     });
     const process_term = try process.wait(io);
     switch (process_term) {
@@ -53,8 +50,8 @@ pub const GitOptions = struct {
     recursive: bool = false,
 };
 
-pub fn git_clone(gpa: std.mem.Allocator, repo: []const u8, out: ?[]const u8, options: GitOptions) !void {
-    var args = std.ArrayList([]const u8){};
+pub fn git_clone(gpa: std.mem.Allocator, io: std.Io, repo: []const u8, out: ?[]const u8, options: GitOptions) !void {
+    var args: std.ArrayList([]const u8) = .empty;
     defer args.deinit(gpa);
 
     try args.append(gpa, "git");
@@ -69,7 +66,7 @@ pub fn git_clone(gpa: std.mem.Allocator, repo: []const u8, out: ?[]const u8, opt
         try args.append(gpa, out_name);
     }
 
-    if (run(gpa, args.items)) |_| {
+    if (run(io, null, args.items)) |_| {
         return;
     } else |_| {
         return error.CannotGitClone;
@@ -93,66 +90,59 @@ pub fn install(allocator: Allocator, from: [][]const u8, to: [][]const u8) !void
     }
 }
 
-fn prepare_gnu_toolchain(allocator: Allocator) !void {
+fn prepare_gnu_toolchain(allocator: Allocator, io: std.Io) !void {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    if (!exists("riscv-gnu-toolchain")) {
-        try git_clone(alloc, "https://github.com/riscv-collab/riscv-gnu-toolchain.git", "riscv-gnu-toolchain", .{});
+    if (!exists(io, "riscv-gnu-toolchain")) {
+        try git_clone(alloc, io, "https://github.com/riscv-collab/riscv-gnu-toolchain.git", "riscv-gnu-toolchain", .{});
     }
 
-    if (!exists("local")) {
-        try std.fs.cwd().makeDir("local");
+    if (!exists(io, "local")) {
+        try std.Io.Dir.cwd().createDirPath(io, "local");
     }
 }
 
-fn install_gnu_toolchain(allocator: Allocator) !void {
+fn install_gnu_toolchain(allocator: Allocator, io: std.Io) !void {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const cwd = try std.fs.cwd().realpathAlloc(alloc, ".");
+    const cwd = try std.Io.Dir.cwd().realPathFileAlloc(io, ".", alloc);
     const toolchain_path = try path.join(alloc, &.{ cwd, "local" });
 
-    try std.process.changeCurDir("riscv-gnu-toolchain");
+    try std.process.setCurrentPath(io, "riscv-gnu-toolchain");
 
-    try run(alloc, &.{ "./configure", "--prefix", toolchain_path });
-    try run(alloc, &.{ "make", "-j32" });
+    try run(io, null, &.{ "./configure", "--prefix", toolchain_path });
+    try run(io, null, &.{ "make", "-j32" });
 
-    try std.process.changeCurDir("..");
-}
-
-fn setenv(name: []const u8, value: []const u8) !void {
-    if (c.setenv(name.ptr, value.ptr, 1) != 0) {
-        return error.CannotSetEnv;
-    }
+    try std.process.setCurrentPath(io, "..");
 }
 
 /// # Needs libc
 /// This will download, build and add to path the gnu toolchain
-pub fn setup_gnu_toolchain(allocator: Allocator) !void {
-    try check_root();
+pub fn setup_gnu_toolchain(gpa: Allocator, io: std.Io, environ: *std.process.Environ.Map) !void {
+    try check_root(io);
 
-    if (exists("riscv-gnu-toolchain") or exists("official-riscv-tests") or exists("local")) {
+    if (exists(io, "riscv-gnu-toolchain") or exists(io, "official-riscv-tests") or exists(io, "local")) {
         print("This is not clean!\n", .{});
     }
 
-    try prepare_gnu_toolchain(allocator);
-    try install_gnu_toolchain(allocator);
+    try prepare_gnu_toolchain(gpa, io);
+    try install_gnu_toolchain(gpa, io);
 
-    var arena = std.heap.ArenaAllocator.init(allocator);
+    var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const cwd = try std.fs.cwd().realpathAlloc(alloc, ".");
+    const cwd = try std.Io.Dir.cwd().realPathFileAlloc(io, ".", alloc);
     const toolchain_path = try path.join(alloc, &.{ cwd, "local" });
 
-    const LD_LIBRARY_PATH = std.process.getEnvVarOwned(alloc, "LD_LIBRARY_PATH") catch "";
-    const NEW_LD_LIBRARY_PATH = try std.fmt.allocPrint(alloc, "{s}:{s}\x00", .{ LD_LIBRARY_PATH, try path.join(alloc, &.{ toolchain_path, "lib" }) });
-    try setenv("LD_LIBRARY_PATH", NEW_LD_LIBRARY_PATH);
+    const library_path = environ.get("LD_LIBRARY_PATH") orelse "";
+    const new_library_path = try std.fmt.allocPrint(alloc, "{s}:{s}\x00", .{ library_path, try path.join(alloc, &.{ toolchain_path, "lib" }) });
+    try environ.put("LD_LIBRARY_PATH", new_library_path);
 
-    const PATH = try std.process.getEnvVarOwned(alloc, "PATH");
-    const NEW_PATH = try std.fmt.allocPrint(alloc, "{s}:{s}\x00", .{ PATH, try path.join(alloc, &.{ toolchain_path, "bin" }) });
-    try setenv("PATH", NEW_PATH);
+    const new_path = try std.fmt.allocPrint(alloc, "{s}:{s}\x00", .{ environ.get("PATH") orelse "", try path.join(alloc, &.{ toolchain_path, "bin" }) });
+    try environ.put("PATH", new_path);
 }

@@ -6,34 +6,27 @@ const utils = @import("utils/default.zig");
 const print = std.debug.print;
 const Allocator = std.mem.Allocator;
 
-pub fn main() !void {
-    try utils.check_root();
+pub fn main(init: std.process.Init) !void {
+    try utils.check_root(init.io);
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
+    try utils.setup_gnu_toolchain(init.gpa, init.io, init.environ_map);
 
-    try utils.setup_gnu_toolchain(gpa.allocator());
-
-    try prepare(gpa.allocator());
-    try build(gpa.allocator());
+    try prepare(init.gpa, init.io);
+    try build(init.io, init.environ_map);
 
     print("xv6 is ready!\n", .{});
 }
 
-fn prepare(allocator: Allocator) !void {
-    if (!utils.exists("xv6")) {
-        try utils.git_clone(allocator, "https://github.com/mit-pdos/xv6-riscv", "xv6", .{});
+fn prepare(allocator: Allocator, io: std.Io) !void {
+    if (!utils.exists(io, "xv6")) {
+        try utils.git_clone(allocator, io, "https://github.com/mit-pdos/xv6-riscv", "xv6", .{});
     }
 }
 
-fn build(allocator: Allocator) !void {
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-    const alloc = arena.allocator();
+fn build(io: std.Io, environ: *std.process.Environ.Map) !void {
+    try std.process.setCurrentPath(io, "xv6");
 
-    try std.process.changeCurDir("xv6");
+    try utils.run(io, environ, &.{ "make", "-j32" });
 
-    try utils.run(alloc, &.{ "make", "-j32" });
-
-    try std.process.changeCurDir("..");
+    try std.process.setCurrentPath(io, "..");
 }

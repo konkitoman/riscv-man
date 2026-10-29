@@ -12,14 +12,14 @@ pub const DataEEI = struct {
             const size_fn = @typeInfo(@TypeOf(TYPE.size)).@"fn";
             const read_fn = @typeInfo(@TypeOf(TYPE.read)).@"fn";
             const write_fn = @typeInfo(@TypeOf(TYPE.write)).@"fn";
-            if (size_fn.params[0].type.? != *TYPE or size_fn.return_type.? != u64) {
+            if (size_fn.param_types[0].? != *TYPE or size_fn.return_type.? != u64) {
                 @compileLog(size_fn);
                 @compileError("Invalid size function for io");
             }
-            if (read_fn.params[0].type.? != *TYPE or read_fn.params[1].type.? != u64 or read_fn.params[2].type.? != []u8) {
+            if (read_fn.param_types[0].? != *TYPE or read_fn.param_types[1].? != u64 or read_fn.param_types[2].? != []u8) {
                 @compileError("Invalid read function for io");
             }
-            if (write_fn.params[0].type.? != *TYPE or write_fn.params[1].type.? != u64 or write_fn.params[2].type.? != []const u8) {
+            if (write_fn.param_types[0].? != *TYPE or write_fn.param_types[1].? != u64 or write_fn.param_types[2].? != []const u8) {
                 @compileLog(write_fn);
                 @compileError("Invalid write function for io");
             }

@@ -702,14 +702,14 @@ pub fn build(comptime ARCH: Arch) type {
             print("Sections:\n", .{});
             var program_header_iterator = header.iterateProgramHeaders(&reader);
             while (try program_header_iterator.next()) |ph| {
-                if (ph.p_type != std.elf.PT_LOAD) continue;
-                print("\t{x}-{x}\n", .{ ph.p_vaddr, ph.p_vaddr + ph.p_memsz });
+                if (ph.type != .LOAD) continue;
+                print("\t{x}-{x}\n", .{ ph.vaddr, ph.vaddr + ph.memsz });
 
-                const buffer = try allocator.alloc(u8, ph.p_filesz);
+                const buffer = try allocator.alloc(u8, ph.filesz);
                 defer allocator.free(buffer);
 
-                _ = try file.readPositionalAll(io, buffer, ph.p_offset);
-                cpu.data.mmio_write(ph.p_vaddr, buffer);
+                _ = try file.readPositionalAll(io, buffer, ph.offset);
+                cpu.data.mmio_write(ph.vaddr, buffer);
             }
 
             cpu.harts[0].data.I.pc = @truncate(header.entry);

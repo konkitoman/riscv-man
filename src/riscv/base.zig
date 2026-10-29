@@ -36,11 +36,11 @@ pub const IntReg = enum(u5) {
     T6,
 
     pub fn to_u5(self: @This()) u5 {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
 
     pub fn from_u5(operand: u5) @This() {
-        return @enumFromInt(operand);
+        return @fromBackingInt(@intCast(operand));
     }
 
     pub fn name(self: @This()) []const u8 {
@@ -68,11 +68,11 @@ pub const PopularIntReg = enum(u3) {
     A5,
 
     pub fn to_u3(self: @This()) u3 {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
 
     pub fn from_u3(operand: u3) @This() {
-        return @enumFromInt(operand);
+        return @fromBackingInt(@intCast(operand));
     }
 
     pub fn to_reg(self: @This()) IntReg {
@@ -601,23 +601,24 @@ pub const CSRAddr = enum(u12) {
     _,
 
     pub fn from_u12(value: u12) @This() {
-        return @enumFromInt(value);
+        return @fromBackingInt(@intCast(value));
     }
 
     pub fn to_u12(self: @This()) u12 {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
 
     var buffer = std.mem.zeroes([8]u8);
 
     pub fn name(self: @This()) []const u8 {
-        inline for (@typeInfo(@This()).@"enum".fields) |field| {
-            if (field.value == self.to_u12()) {
-                return field.name;
+        const ty = @typeInfo(@This()).@"enum";
+        inline for (ty.field_names, ty.field_values) |field_name, field_value| {
+            if (field_value == self.to_u12()) {
+                return field_name;
             }
         }
         var writer = std.Io.Writer.fixed(&buffer);
-        writer.print("0x{x}", .{@as(u12, @intFromEnum(self))}) catch {
+        writer.print("0x{x}", .{@as(u12, @backingInt(self))}) catch {
             unreachable;
         };
         return &buffer;

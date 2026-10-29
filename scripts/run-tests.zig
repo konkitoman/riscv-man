@@ -91,7 +91,7 @@ pub fn main(init: std.process.Init) !void {
     const alloc = arena.allocator();
 
     print("Building the test runner:\n", .{});
-    try utils.run(io, &.{ "zig", "build", "test-runner" });
+    try utils.run(io, null, &.{ "zig", "build", "test-runner" });
 
     const cwd = try std.Io.Dir.cwd().realPathFileAlloc(io, ".", alloc);
     const test_runner_path = try std.Io.Dir.cwd().realPathFileAlloc(io, "zig-out/bin/rvman-test-runner", alloc);
@@ -138,7 +138,7 @@ pub fn main(init: std.process.Init) !void {
         const argv = try alloc.dupe([]const u8, &.{ test_runner_path, cpu_meta, program });
 
         var stdio_type: std.process.SpawnOptions.StdIo = undefined;
-        if (!try init.minimal.environ.contains(alloc, "SIMPLE")) {
+        if (!init.environ_map.contains("SIMPLE")) {
             stdio_type = .pipe;
         } else {
             stdio_type = .close;
@@ -191,7 +191,7 @@ pub fn main(init: std.process.Init) !void {
         }
         failed += 1;
 
-        if (!try init.minimal.environ.contains(alloc, "SIMPLE")) {
+        if (!init.environ_map.contains("SIMPLE")) {
             print("\x1B[91mFailed\x1B[0m {s}\n", .{task.name});
             print("{s}", .{task.stdout.items});
         }
